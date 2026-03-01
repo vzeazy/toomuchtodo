@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Star, Trash2, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Star, Trash2, X, Plus, CornerDownRight, NotebookPen } from 'lucide-react';
 import { MarkdownEditor } from '../../components/MarkdownEditor';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
 import { Project, Task } from '../../types';
@@ -17,115 +17,215 @@ export const TaskModal: React.FC<{
   onDelete: (id: string) => void;
   onToggleStar: (id: string) => void;
   onToggleComplete: (id: string) => void;
-}> = ({ task, tasks, projects, onClose, onUpdate, onSetParent, onDelete, onToggleStar, onToggleComplete }) => {
+  onAddSubtask?: (parentTask: Task, title: string) => void;
+  onOpenTask?: (task: Task) => void;
+}> = ({ task, tasks, projects, onClose, onUpdate, onSetParent, onDelete, onToggleStar, onToggleComplete, onAddSubtask, onOpenTask }) => {
+  const [isAddingSubtask, setIsAddingSubtask] = useState(false);
+  const [draftSubtaskTitle, setDraftSubtaskTitle] = useState('');
+
   const tagValue = useMemo(() => task.tags.join(', '), [task.tags]);
+  const subtasks = useMemo(() => tasks.filter((t) => t.parentId === task.id), [tasks, task.id]);
   const availableParents = useMemo(
     () => tasks.filter((candidate) => candidate.id !== task.id && canReparentTask(task.id, candidate.id, tasks)),
     [task.id, tasks],
   );
 
+  const commitSubtask = (keepOpen = false) => {
+    const nextTitle = draftSubtaskTitle.trim();
+    if (!nextTitle) {
+      setIsAddingSubtask(false);
+      setDraftSubtaskTitle('');
+      return;
+    }
+    if (onAddSubtask) onAddSubtask(task, nextTitle);
+    setDraftSubtaskTitle('');
+    setIsAddingSubtask(keepOpen);
+  };
+
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md" onClick={onClose}>
-      <div className="panel-surface flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[30px]" onClick={(event) => event.stopPropagation()}>
-        <div className="panel-muted flex items-center justify-between border-b soft-divider px-6 py-4">
+    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md transition-opacity" onClick={onClose}>
+      <div className="panel-surface flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+
+        {/* Header - Seamless */}
+        <div className="flex shrink-0 items-center justify-between px-8 pb-4 pt-7">
           <div className="flex items-center gap-3">
             <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} />
-            <button type="button" onClick={() => onToggleStar(task.id)} className={`transition-colors ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}>
-              <Star size={20} fill={task.isStarred ? 'currentColor' : 'none'} />
+            <button type="button" onClick={() => onToggleStar(task.id)} className={`transition-colors hover:scale-110 active:scale-95 ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}>
+              <Star size={18} fill={task.isStarred ? 'currentColor' : 'none'} />
             </button>
-            <span className="section-kicker text-[11px] font-bold uppercase text-[var(--accent)]">Task Details</span>
+            <span className="ml-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-muted)] opacity-70">Task</span>
           </div>
-          <button type="button" onClick={onClose} className="text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]">
-            <X size={20} />
+          <button type="button" onClick={onClose} className="rounded-full p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[var(--text-primary)]">
+            <X size={18} />
           </button>
         </div>
 
-        <div className="space-y-6 overflow-y-auto p-6">
-          <input
-            type="text"
-            value={task.title}
-            onChange={(event) => onUpdate(task.id, { title: event.target.value })}
-            className="w-full border-none bg-transparent text-[34px] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-            placeholder="Task title"
-          />
-
-          <MarkdownEditor value={task.description} onChange={(value) => onUpdate(task.id, { description: value })} />
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">Project</label>
-              <select
-                value={task.projectId || ''}
-                onChange={(event) => onUpdate(task.id, { projectId: event.target.value || null })}
-                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-              >
-                <option value="">No Project</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">Area</label>
-              <select
-                value={task.area}
-                onChange={(event) => onUpdate(task.id, { area: event.target.value })}
-                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-              >
-                {AREAS.map((area) => <option key={area} value={area}>{area}</option>)}
-              </select>
-            </div>
+        {/* Scrollable Body */}
+        <div className="flex-1 overflow-y-auto px-8 pb-4">
+          <div className="mb-6">
+            <input
+              type="text"
+              value={task.title}
+              onChange={(event) => onUpdate(task.id, { title: event.target.value })}
+              className="w-full select-all bg-transparent text-[22px] font-semibold leading-[1.2] tracking-[-0.02em] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+              placeholder="Task title..."
+            />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">Parent Task</label>
-            <select
-              value={task.parentId || ''}
-              onChange={(event) => onSetParent(task.id, event.target.value || null)}
-              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-            >
-              <option value="">Top level</option>
-              {availableParents.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title}</option>)}
-            </select>
+          <div className="mb-8">
+            <MarkdownEditor value={task.description} onChange={(value) => onUpdate(task.id, { description: value })} />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">Due Date</label>
-              <input
-                type="date"
-                value={task.dueDate || ''}
-                onChange={(event) => onUpdate(task.id, { dueDate: event.target.value || null, status: event.target.value ? 'scheduled' : task.status })}
-                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">Tags</label>
-              <input
-                type="text"
-                value={tagValue}
-                onChange={(event) => onUpdate(task.id, { tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean) })}
-                placeholder="comma, separated, tags"
-                className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-              />
-            </div>
-          </div>
-
-          {task.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {task.tags.map((tag) => <span key={tag} className="rounded-full bg-[var(--accent-soft)] px-2 py-1 text-[11px] font-medium text-[var(--accent)]">#{tag}</span>)}
+          {(subtasks.length > 0 || isAddingSubtask) && (
+            <div className="mb-8">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Subtasks</div>
+                {!isAddingSubtask && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingSubtask(true)}
+                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                  >
+                    <Plus size={11} />
+                    Add
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1.5 pt-1">
+                {subtasks.map((subtask) => (
+                  <button
+                    key={subtask.id}
+                    type="button"
+                    onClick={() => onOpenTask && onOpenTask(subtask)}
+                    className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+                  >
+                    <TaskCheckbox checked={subtask.status === 'completed'} onToggle={() => onToggleComplete(subtask.id)} />
+                    <span className={`block flex-1 truncate text-[13px] tracking-[-0.01em] ${subtask.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>{subtask.title}</span>
+                    {subtask.description.trim() && <NotebookPen size={12} className="shrink-0 text-[var(--text-muted)]" />}
+                  </button>
+                ))}
+                {isAddingSubtask && (
+                  <div className="flex items-center gap-2 rounded-xl border soft-divider bg-[var(--panel-alt-bg)] px-2 py-1.5 transition-colors focus-within:border-[var(--accent)]">
+                    <CornerDownRight size={13} className="shrink-0 text-[var(--text-muted)]" />
+                    <input
+                      autoFocus
+                      value={draftSubtaskTitle}
+                      onChange={(event) => setDraftSubtaskTitle(event.target.value)}
+                      onBlur={() => commitSubtask(false)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          commitSubtask(true);
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          setIsAddingSubtask(false);
+                          setDraftSubtaskTitle('');
+                        }
+                      }}
+                      placeholder="New subtask..."
+                      className="w-full bg-transparent px-1 text-[13px] text-[var(--text-primary)] outline-none"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
+
+          {!isAddingSubtask && subtasks.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setIsAddingSubtask(true)}
+              className="mb-8 flex items-center gap-2 text-[12px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+            >
+              <Plus size={14} /> Add subtask
+            </button>
+          )}
+
+          <div className="space-y-5">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Project</label>
+                <select
+                  value={task.projectId || ''}
+                  onChange={(event) => onUpdate(task.id, { projectId: event.target.value || null })}
+                  className="w-full cursor-pointer appearance-none bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
+                >
+                  <option value="" className="bg-[var(--panel-bg)]">No Project</option>
+                  {projects.map((project) => <option key={project.id} value={project.id} className="bg-[var(--panel-bg)]">{project.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Area</label>
+                <select
+                  value={task.area}
+                  onChange={(event) => onUpdate(task.id, { area: event.target.value })}
+                  className="w-full cursor-pointer appearance-none bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
+                >
+                  {AREAS.map((area) => <option key={area} value={area} className="bg-[var(--panel-bg)]">{area}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Parent Task</label>
+              <select
+                value={task.parentId || ''}
+                onChange={(event) => onSetParent(task.id, event.target.value || null)}
+                className="w-full cursor-pointer appearance-none bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
+              >
+                <option value="" className="bg-[var(--panel-bg)]">Top level</option>
+                {availableParents.map((candidate) => <option key={candidate.id} value={candidate.id} className="bg-[var(--panel-bg)]">{candidate.title}</option>)}
+              </select>
+            </div>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Due Date</label>
+                <input
+                  type="date"
+                  value={task.dueDate || ''}
+                  onChange={(event) => onUpdate(task.id, { dueDate: event.target.value || null, status: event.target.value ? 'scheduled' : task.status })}
+                  className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)] [color-scheme:dark]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Tags</label>
+                <input
+                  type="text"
+                  value={tagValue}
+                  onChange={(event) => onUpdate(task.id, { tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean) })}
+                  placeholder="tag1, tag2..."
+                  className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors placeholder:font-normal placeholder:text-[var(--text-muted)] hover:text-[var(--accent)] focus:text-[var(--accent)]"
+                />
+              </div>
+            </div>
+
+            {task.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2">
+                {task.tags.map((tag) => (
+                  <span key={tag} className="flex h-[22px] items-center rounded-md bg-[rgba(255,255,255,0.06)] px-2 text-[10.5px] font-bold text-[var(--text-secondary)]">
+                    <span className="mr-0.5 opacity-40">#</span>{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="panel-muted flex items-center justify-between border-t soft-divider px-6 py-4">
-          <button type="button" onClick={() => { onDelete(task.id); onClose(); }} className="flex items-center gap-2 text-xs font-medium text-[var(--danger)] transition-colors hover:opacity-85">
-            <Trash2 size={14} /> Delete
+        {/* Footer - Seamless */}
+        <div className="flex shrink-0 items-center justify-between px-8 pb-7 pt-4">
+          <button type="button" onClick={() => { onDelete(task.id); onClose(); }} className="flex h-[32px] items-center gap-1.5 rounded-lg px-2 text-[11px] font-bold tracking-[0.04em] text-[var(--danger)] opacity-80 transition-all hover:bg-[rgba(255,0,0,0.1)] hover:opacity-100">
+            <Trash2 size={13} strokeWidth={2.5} /> Delete
           </button>
-          <button type="button" onClick={onClose} className="rounded-lg bg-[var(--accent)] px-6 py-2 text-sm font-semibold text-[var(--accent-contrast)] transition-opacity hover:opacity-90">
+
+          <button type="button" onClick={onClose} className="flex h-[34px] items-center justify-center rounded-xl bg-[var(--text-primary)] px-5 text-[12px] font-bold tracking-[0.02em] text-[var(--panel-bg)] shadow-[0_4px_10px_rgba(0,0,0,0.2)] transition-all hover:scale-105 active:scale-95">
             Done
           </button>
         </div>
+
       </div>
     </div>
   );

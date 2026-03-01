@@ -12,13 +12,18 @@ export const getStartOfWeek = (date: Date) => {
   return monday;
 };
 
-export const getWeekDays = (offset: number) => {
-  const monday = getStartOfWeek(new Date());
-  monday.setDate(monday.getDate() + (offset * 7));
+export const getWeekDays = (offset: number, startOnToday = false) => {
+  const start = startOnToday ? new Date() : getStartOfWeek(new Date());
+  start.setHours(0, 0, 0, 0);
 
-  return Array.from({ length: 7 }, (_, index) => {
-    const day = new Date(monday);
-    day.setDate(monday.getDate() + index);
+  const span = startOnToday ? 5 : 7;
+  const shiftDays = startOnToday ? offset : offset * 7;
+
+  start.setDate(start.getDate() + shiftDays);
+
+  return Array.from({ length: span }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
     day.setHours(0, 0, 0, 0);
     const todayKey = formatDateKey(new Date());
 

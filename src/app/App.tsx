@@ -97,10 +97,12 @@ export default function App() {
   const [hideEmptyProjectsInPlanner, setHideEmptyProjectsInPlanner] = useState(false);
   const [compactEmptyDaysInPlanner, setCompactEmptyDaysInPlanner] = useState(false);
 
+  const [startPlannerOnToday, setStartPlannerOnToday] = useState(false);
+
   const newTaskInputRef = useRef<HTMLInputElement>(null);
   const sidebarSearchRef = useRef<HTMLInputElement>(null);
 
-  const weekDays = useMemo(() => getWeekDays(currentWeekOffset), [currentWeekOffset]);
+  const weekDays = useMemo(() => getWeekDays(currentWeekOffset, startPlannerOnToday), [currentWeekOffset, startPlannerOnToday]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDays), [weekDays]);
 
   const counts = useMemo(() => ({
@@ -219,11 +221,13 @@ export default function App() {
     { id: 'goto-search', label: 'Open Search', hint: 'Navigation', run: () => { setCurrentView('search'); sidebarSearchRef.current?.focus(); } },
     { id: 'goto-settings', label: 'Open Settings', hint: 'Navigation', run: () => setCurrentView('settings') },
     { id: 'new-task', label: 'Focus New Task Input', hint: 'Task', run: () => newTaskInputRef.current?.focus() },
-    { id: 'toggle-theme', label: 'Cycle Theme', hint: 'Theme', run: () => {
-      const currentIndex = themes.findIndex((theme) => theme.id === settings.activeThemeId);
-      const nextTheme = themes[(currentIndex + 1) % themes.length];
-      setActiveTheme(nextTheme.id);
-    } },
+    {
+      id: 'toggle-theme', label: 'Cycle Theme', hint: 'Theme', run: () => {
+        const currentIndex = themes.findIndex((theme) => theme.id === settings.activeThemeId);
+        const nextTheme = themes[(currentIndex + 1) % themes.length];
+        setActiveTheme(nextTheme.id);
+      }
+    },
     { id: 'export-data', label: 'Export Data', hint: 'Data', run: () => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes })) },
     { id: 'shortcuts', label: 'Open Keyboard Shortcuts', hint: 'Help', run: () => setShowShortcutsModal(true) },
   ], [projects, settings, tasks, themes, setActiveTheme]);
@@ -336,6 +340,8 @@ export default function App() {
           onDelete={deleteTask}
           onToggleStar={toggleStar}
           onToggleComplete={toggleComplete}
+          onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id)}
+          onOpenTask={setTaskToEditInModal}
         />
       )}
 
@@ -352,10 +358,10 @@ export default function App() {
             {currentView === 'planner' && <span className="ml-3 px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">{weekRangeLabel}</span>}
           </div>
           <div className="relative ml-4">
-              <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex items-center gap-1 rounded-full border soft-divider px-3 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]">
-                <span className="font-medium">{selectedArea || 'All Areas'}</span>
-                <ChevronDown size={14} />
-              </button>
+            <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex items-center gap-1 rounded-full border soft-divider px-3 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]">
+              <span className="font-medium">{selectedArea || 'All Areas'}</span>
+              <ChevronDown size={14} />
+            </button>
             {showAreaMenu && (
               <div className="panel-surface absolute left-0 top-10 z-50 w-44 rounded-2xl py-1">
                 <button type="button" onClick={() => { setSelectedArea(null); setShowAreaMenu(false); }} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">All Areas {!selectedArea && <span className="text-[var(--accent)]">•</span>}</button>
@@ -371,17 +377,28 @@ export default function App() {
         </div>
 
         <div className="flex h-full items-center gap-2 py-1">
-          <div className="panel-muted flex items-center rounded-xl border soft-divider pl-3 pr-2 transition-all focus-within:border-[var(--focus)]">
-            <Plus size={14} className="shrink-0 text-[var(--accent)]" />
+          <div className="group panel-muted flex items-center rounded-xl border soft-divider p-1 transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_1px_var(--accent-soft)]">
+            <div className="flex h-[30px] items-center pl-2.5">
+              <Plus size={14} className="shrink-0 text-[var(--text-muted)] transition-colors group-focus-within:text-[var(--accent)]" />
+            </div>
             <form onSubmit={handleAddNewTask}>
               <input
                 ref={newTaskInputRef}
-                placeholder="New Item"
-                className="h-full w-32 bg-transparent px-2 text-[12px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:w-48"
+                placeholder="New item..."
+                className="flex h-[30px] w-32 bg-transparent px-2.5 text-[12.5px] font-medium text-[var(--text-primary)] outline-none transition-all placeholder:font-normal placeholder:text-[var(--text-muted)] focus:w-56"
                 value={newTaskTitle}
                 onChange={(event) => setNewTaskTitle(event.target.value)}
               />
             </form>
+            {!newTaskTitle ? (
+              <div className="flex h-[30px] pointer-events-none items-center pr-1 transition-opacity group-focus-within:opacity-0">
+                <span className="flex h-5 items-center justify-center rounded border soft-divider bg-[var(--panel-bg)] px-1.5 text-[10px] font-bold text-[var(--text-muted)] shadow-sm">N</span>
+              </div>
+            ) : (
+              <button type="button" onClick={() => handleAddNewTask()} className="mr-0.5 flex h-[26px] items-center rounded-md bg-[var(--accent)] px-2.5 text-[11px] font-bold text-white shadow-sm transition-all hover:brightness-110 active:scale-95">
+                Add
+              </button>
+            )}
           </div>
 
           <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
@@ -557,6 +574,7 @@ export default function App() {
               selectedArea={selectedArea}
               hideEmptyProjects={hideEmptyProjectsInPlanner}
               compactEmptyDays={compactEmptyDaysInPlanner}
+              startOnToday={startPlannerOnToday}
               onUpdateTask={updateTask}
               onMoveTaskBefore={moveTaskBeforeFlat}
               onMoveTaskAfter={moveTaskAfterFlat}
@@ -571,6 +589,7 @@ export default function App() {
               }}
               onToggleHideEmptyProjects={() => setHideEmptyProjectsInPlanner((value) => !value)}
               onToggleCompactEmptyDays={() => setCompactEmptyDaysInPlanner((value) => !value)}
+              onToggleStartOnToday={() => setStartPlannerOnToday((value) => !value)}
             />
           )}
 

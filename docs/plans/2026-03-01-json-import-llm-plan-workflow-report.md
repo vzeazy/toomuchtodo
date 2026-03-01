@@ -1,0 +1,324 @@
+# JSON Import + LLM Plan Workflow Report
+
+## Goal
+
+Design a clean, reliable way for this app to:
+
+- import one or many projects/task lists from JSON
+- support LLM-generated plans from a template
+- support relative date planning (for example, "start in 10 days")
+- update, delete, or fully strip imported plans later
+- export plan-progress context for an LLM to suggest timeline adjustments
+- keep a meaningful change log of task updates/completions
+
+---
+
+## What exists today (codebase findings)
+
+### 1) Data model and persistence
+
+- `src/types.ts` defines:
+  - `Task` with fields including `status`, `projectId`, `dueDate`, `parentId`, `createdAt`, `tags`
+  - `Project` with optional nesting via `parentId`
+  - app state container `AppStateData`
+  - export envelope `AppDataExport`
+- `src/store/useAppStore.ts` persists entire app state in localStorage (`too_much_to_do_state_v1`).
+- `normalizeTask` and `normalizeProject` perform lightweight coercion/sanitization during load/import.
+
+### 2) Import/export support already exists (but is whole-app replace)
+
+- Export:
+  - `createExportPayload` in `src/store/useAppStore.ts`
+  - wired in settings and command palette via `downloadJson(...)` in `src/app/App.tsx`
+- Import:
+  - settings file picker in `src/features/settings/SettingsView.tsx`
+  - guard `isAppExport(...)` in `src/app/App.tsx`
+  - `importAppData(...)` in `src/store/useAppStore.ts` replaces full app state
+
+### 3) Task lifecycle behavior
+
+- Completion is toggled via `toggleComplete` (`completed` <-> `scheduled|next`) in `src/store/useAppStore.ts`.
+- Deletion is hard delete (`deleteTask`) not soft delete/archive.
+- `TaskStatus` includes `'deleted'`, and `AppView` includes `'trash'`, but current UI flow does not actively use a trash lifecycle.
+- There is no task change history/audit table/list in app state.
+
+### 4) Good foundation already in place
+
+- Hierarchy support (`parentId`, `collapsed`) and tree helpers exist.
+- JSON portability already exists at full-state level.
+- Theme workflow already demonstrates "LLM prompt + paste JSON + validate + apply" pattern.
+
+---
+
+## Gap analysis vs your requested workflow
+
+### Missing today
+
+1. **Plan-level identity**
+   - Tasks/projects have no `sourcePlanId` or import origin metadata.
+   - Cannot cleanly remove "everything imported from Plan X".
+
+2. **Partial import modes**
+   - Current import replaces whole state.
+   - No append/merge/upsert modes for one or many plan bundles.
+
+3. **Relative date resolution**
+   - No first-class fields like `offsetDays`, `anchor`, or `baselineStartDate`.
+   - Only concrete `dueDate` values are supported.
+
+4. **LLM planning contract**
+   - No plan-specific JSON schema/template yet.
+   - No purpose-built generator prompt for "build me an execution plan".
+
+5. **Progress snapshot export for LLM**
+   - No feature that emits a compact context payload of completion %, slips, blockers, and changed dates.
+
+6. **Change log / audit trail**
+   - No event history for updates, status transitions, or due-date changes.
+
+---
+
+## Recommended architecture
+
+## A) Introduce a separate importable "Plan Bundle" schema (do not overload full-app export)
+
+Keep `AppDataExport` for backup/restore. Add a second schema for operational planning:
+
+```json
+{
+  "schema": "too-much-to-do.plan-bundle",
+  "version": 1,
+  "bundleId": "bundle-launch-q3",
+  "bundleName": "Q3 Product Launch",
+  "createdBy": "llm|human",
+  "generatedAt": "2026-03-01T00:00:00.000Z",
+  "baseline": {
+    "mode": "relative",
+    "anchor": "import_date",
+    "startDate": null
+  },
+  "projects": [],
+  "tasks": [],
+  "metadata": {}
+}
+```
+
+### Task payload for plan bundles
+
+Include both relative and resolved date support:
+
+```json
+{
+  "id": "task-market-research",
+  "title": "Run customer interviews",
+  "description": "",
+  "projectRef": "proj-discovery",
+  "parentRef": null,
+  "status": "next",
+  "tags": ["research"],
+  "schedule": {
+    "relativeOffsetDays": 5,
+    "durationDays": 3,
+    "hardDate": null
+  },
+  "priority": "p1",
+  "dependsOn": []
+}
+```
+
+On import, compute concrete app `dueDate` from baseline if relative scheduling is used.
+
+## B) Add plan provenance fields to app entities
+
+Extend persisted model:
+
+- `Task.sourcePlanId?: string | null`
+- `Task.sourceExternalId?: string | null` (task id from imported bundle)
+- `Project.sourcePlanId?: string | null`
+- new `PlanRecord` collection at state level (import metadata)
+
+This unlocks:
+
+- delete all tasks/projects from a given imported plan
+- update/upsert by stable external ids
+- reporting by plan source
+
+## C) Add explicit import modes
+
+For plan bundle import:
+
+1. **Append**: always create new internal ids, preserve links.
+2. **Upsert by sourceExternalId+sourcePlanId**: update existing imported tasks.
+3. **Replace plan**: remove previous entities from same plan, then import fresh.
+4. **Preview + confirm** (recommended): show counts before applying.
+
+## D) Add an event log (lightweight audit trail)
+
+Add `taskEvents` state collection:
+
+```ts
+type TaskEventType =
+  | 'created'
+  | 'updated'
+  | 'status_changed'
+  | 'completed'
+  | 'reopened'
+  | 'due_date_changed'
+  | 'deleted'
+  | 'imported'
+  | 'import_replaced';
+```
+
+Each event should include:
+
+- `id`, `taskId`, `sourcePlanId`, `type`, `timestamp`
+- optional `before` / `after` snapshots for key fields
+
+Emit events from central store mutations (`updateTask`, `toggleComplete`, `deleteTask`, import actions), not from UI components.
+
+## E) Add progress snapshot export for LLM replanning
+
+Create `buildPlanProgressPrompt(planId)` that outputs:
+
+- current baseline/anchor
+- completion metrics (total, completed, overdue)
+- slipped tasks (planned offset vs actual)
+- changed due dates + status transitions
+- blockers/dependencies still open
+
+Then provide:
+
+1. **Copy prompt** button
+2. **Copy raw JSON context** button
+
+This mirrors your existing successful theme-builder UX pattern.
+
+---
+
+## UX proposal
+
+## Settings > Data > Plans
+
+Add a dedicated "Plans" section:
+
+- Import plan bundle (JSON file or pasted JSON)
+- Import mode selector (Append / Upsert / Replace Plan)
+- Relative start options:
+  - start on import date
+  - start on selected date
+  - preserve hard dates only
+- Preview summary before apply:
+  - projects to add/update
+  - tasks to add/update/delete
+  - date resolution summary
+
+## Plan management table
+
+For each imported plan:
+
+- Plan name, imported date, last updated
+- progress percent and overdue count
+- actions:
+  - Export LLM progress prompt
+  - Export plan snapshot JSON
+  - Re-import update
+  - Remove plan artifacts (strip all tasks/projects by `sourcePlanId`)
+
+---
+
+## Suggested implementation phases
+
+## Phase 1 — Schema + store foundation
+
+1. Extend types with `PlanBundle`, `PlanRecord`, provenance fields, `TaskEvent`.
+2. Add state collections for plan records and task events.
+3. Add migration-safe normalization defaults.
+4. Keep current full-app import/export untouched.
+
+## Phase 2 — Bundle parser + importer
+
+1. Add JSON validation utility for plan bundles.
+2. Add relative date resolver.
+3. Implement append/upsert/replace import strategies.
+4. Emit task events during import.
+
+## Phase 3 — Plan management UI
+
+1. Add Settings > Plans section.
+2. Add import preview and mode selection.
+3. Add per-plan actions (reimport/remove/export snapshot).
+
+## Phase 4 — LLM loop integration
+
+1. Add "Generate plan template prompt" helper.
+2. Add "Export progress prompt" from imported plan records.
+3. Add optional "Apply proposed changes JSON" pathway using same validator.
+
+## Phase 5 — Hardening
+
+1. Add validation edge-case handling (bad refs, cycles, duplicate IDs).
+2. Add regression tests for importer and relative scheduling.
+3. Add concise docs/example templates in `docs/`.
+
+---
+
+## Recommended JSON template for LLM generation (MVP)
+
+Use this as the model contract you feed into an LLM:
+
+```json
+{
+  "schema": "too-much-to-do.plan-bundle",
+  "version": 1,
+  "bundleId": "string",
+  "bundleName": "string",
+  "baseline": {
+    "mode": "relative",
+    "anchor": "import_date",
+    "startDate": null
+  },
+  "projects": [
+    { "id": "proj-1", "name": "Project Name", "parentId": null }
+  ],
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Task title",
+      "description": "markdown allowed",
+      "projectRef": "proj-1",
+      "parentRef": null,
+      "status": "next",
+      "tags": [],
+      "schedule": { "relativeOffsetDays": 0, "durationDays": 1, "hardDate": null },
+      "dependsOn": []
+    }
+  ]
+}
+```
+
+---
+
+## Risks and mitigations
+
+1. **ID collisions / duplicate imports**
+   - Mitigation: provenance keys (`sourcePlanId`, `sourceExternalId`) + import mode semantics.
+
+2. **Date drift confusion**
+   - Mitigation: always store resolved date + relative metadata; show both in plan management UI.
+
+3. **Accidental destructive replacement**
+   - Mitigation: preview + explicit confirmation for Replace/Strip operations.
+
+4. **Noisy event logs**
+   - Mitigation: event compaction for repetitive edits and capped retention strategy.
+
+---
+
+## Concrete recommendation
+
+The cleanest path is a **dual-schema strategy**:
+
+- keep current full-state JSON import/export for backup portability
+- add a dedicated **Plan Bundle** JSON format with provenance + relative schedule semantics
+
+Then wire a new "Plans" management layer that supports import/update/strip and generates an LLM-ready progress prompt from tracked event history. This gives you the loop you described: **LLM generates plan -> app imports and tracks -> app exports progress context -> LLM suggests timeline updates -> app reapplies cleanly**.
