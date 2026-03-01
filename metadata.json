@@ -1,0 +1,5 @@
+{
+  "name": "Too Much To Do",
+  "description": "A high-fidelity clone of the Nirvana GTD task management app with local storage persistence and full task management features.",
+  "requestFramePermissions": []
+}
