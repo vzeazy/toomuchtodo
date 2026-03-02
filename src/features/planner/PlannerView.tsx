@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlignLeft, Shrink, FolderMinus, CalendarDays, Sun, CloudSun, Cloud, CloudFog, CloudRain, Snowflake, CloudLightning } from 'lucide-react';
 import { GhostItem } from '../../components/GhostItem';
+import { TaskCheckbox } from '../../components/TaskCheckbox';
 import { PlannerWidthMode, Project, Task } from '../../types';
 import { useWeather, WeatherCode } from '../../lib/useWeather';
 
@@ -31,6 +32,7 @@ export const PlannerView: React.FC<{
   onUpdateTask: (id: string, updates: Partial<Task>) => void;
   onMoveTaskBefore: (sourceId: string, targetId: string) => void;
   onMoveTaskAfter: (sourceId: string, targetId: string) => void;
+  onToggleComplete: (id: string) => void;
   onAddTask: (title: string, dueDate: string) => void;
   onAddProjectTask: (title: string, projectId: string) => void;
   onOpenTask: (task: Task) => void;
@@ -39,7 +41,7 @@ export const PlannerView: React.FC<{
   onToggleHideEmptyProjects: () => void;
   onToggleCompactEmptyDays: () => void;
   onToggleStartOnToday: () => void;
-}> = ({ weekDays, tasks, projects, widthMode, selectedArea, hideEmptyProjects, compactEmptyDays, startOnToday, onUpdateTask, onMoveTaskBefore, onMoveTaskAfter, onAddTask, onAddProjectTask, onOpenTask, onOpenProject, onOpenDay, onToggleHideEmptyProjects, onToggleCompactEmptyDays, onToggleStartOnToday }) => {
+}> = ({ weekDays, tasks, projects, widthMode, selectedArea, hideEmptyProjects, compactEmptyDays, startOnToday, onUpdateTask, onMoveTaskBefore, onMoveTaskAfter, onToggleComplete, onAddTask, onAddProjectTask, onOpenTask, onOpenProject, onOpenDay, onToggleHideEmptyProjects, onToggleCompactEmptyDays, onToggleStartOnToday }) => {
   const weather = useWeather();
   const firstVisibleDate = weekDays[0]?.dateStr;
   const carryForwardTasks = tasks.filter((task) => task.status !== 'completed' && task.dueDate && firstVisibleDate && task.dueDate < firstVisibleDate);
@@ -132,11 +134,14 @@ export const PlannerView: React.FC<{
                         event.dataTransfer.setData('context', 'reorder');
                       }}
                       onClick={() => onOpenTask(task)}
-                      className="group w-full rounded-lg px-1.5 py-1 text-left text-[12.5px] transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+                      className="group relative w-full rounded-lg px-1.5 py-1 text-left text-[12.5px] transition-colors hover:bg-[rgba(255,255,255,0.03)]"
                     >
                       <div className="flex items-center gap-1.5">
                         <span className={`block flex-1 truncate ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
-                        {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" />}
+                        {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] transition-opacity group-hover:opacity-0 opacity-60" />}
+                      </div>
+                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center">
+                        <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[14px] w-[14px]" />
                       </div>
                     </button>
                     <PlannerDropZone
@@ -167,9 +172,12 @@ export const PlannerView: React.FC<{
               </div>
               <div className="space-y-1">
                 {carryForwardTasks.slice(0, 8).map((task) => (
-                  <button key={task.id} type="button" draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.setData('context', 'reorder'); }} className="flex w-full items-center justify-between px-1 py-1.5 text-left transition-colors hover:text-[var(--text-primary)]" onClick={() => onOpenTask(task)}>
-                    <span className="block flex-1 truncate mr-2 text-[13px] text-[var(--text-secondary)]">{task.title}</span>
-                    <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)]">{task.dueDate?.split('-').slice(1).join('/')}</span>
+                  <button key={task.id} type="button" draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.setData('context', 'reorder'); }} className="group relative flex w-full items-center justify-between px-1 py-1.5 text-left transition-colors hover:text-[var(--text-primary)]" onClick={() => onOpenTask(task)}>
+                    <span className={`block flex-1 truncate mr-2 text-[13px] ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
+                    <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)] transition-opacity group-hover:opacity-0">{task.dueDate?.split('-').slice(1).join('/')}</span>
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center">
+                      <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[14px] w-[14px]" />
+                    </div>
                   </button>
                 ))}
               </div>
@@ -190,8 +198,11 @@ export const PlannerView: React.FC<{
               </button>
               <div className="space-y-1">
                 {tasks.filter((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)).slice(0, 8).map((task) => (
-                  <button key={task.id} type="button" draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.setData('context', 'reorder'); }} className="block w-full truncate px-1 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]" onClick={() => onOpenTask(task)}>
-                    {task.title}
+                  <button key={task.id} type="button" draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.setData('context', 'reorder'); }} className="group relative block w-full truncate px-1 py-1.5 text-left text-[13px] transition-colors hover:text-[var(--text-primary)]" onClick={() => onOpenTask(task)}>
+                    <span className={`block truncate pr-3 ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center">
+                      <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[14px] w-[14px]" />
+                    </div>
                   </button>
                 ))}
                 <GhostItem placeholder="Add to list..." onAdd={(title) => onAddProjectTask(title, project.id)} className="mt-1 opacity-40" />

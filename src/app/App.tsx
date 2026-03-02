@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlignLeft,
   Calendar,
   ChevronDown,
   ChevronLeft,
@@ -13,6 +14,7 @@ import {
   Folder,
   Inbox,
   Keyboard,
+  LayoutList,
   List,
   Maximize2,
   Minimize2,
@@ -368,41 +370,7 @@ export default function App() {
         </div>
 
         <div className="flex h-full items-center gap-2 py-1">
-          <div className="group panel-muted flex items-center rounded-xl border soft-divider p-1 transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_1px_var(--accent-soft)]">
-            <div className="flex h-[30px] items-center pl-2.5">
-              <Plus size={14} className="shrink-0 text-[var(--text-muted)] transition-colors group-focus-within:text-[var(--accent)]" />
-            </div>
-            <form onSubmit={handleAddNewTask}>
-              <input
-                ref={newTaskInputRef}
-                placeholder="New item..."
-                className="flex h-[30px] w-32 bg-transparent px-2.5 text-[12.5px] font-medium text-[var(--text-primary)] outline-none transition-all placeholder:font-normal placeholder:text-[var(--text-muted)] focus:w-56"
-                value={newTaskTitle}
-                onChange={(event) => setNewTaskTitle(event.target.value)}
-              />
-            </form>
-            {!newTaskTitle ? (
-              <div className="flex h-[30px] pointer-events-none items-center pr-1 transition-opacity group-focus-within:opacity-0">
-                <span className="flex h-5 items-center justify-center rounded border soft-divider bg-[var(--panel-bg)] px-1.5 text-[10px] font-bold text-[var(--text-muted)] shadow-sm">N</span>
-              </div>
-            ) : (
-              <button type="button" onClick={() => handleAddNewTask()} className="mr-0.5 flex h-[26px] items-center rounded-md bg-[var(--accent)] px-2.5 text-[11px] font-bold text-white shadow-sm transition-all hover:brightness-110 active:scale-95">
-                Add
-              </button>
-            )}
-          </div>
-
-          <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
-
-          <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
-            <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Planner (8)">
-              <Columns size={16} />
-            </button>
-            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View (1-7)">
-              <List size={16} />
-            </button>
-          </div>
-
+          {/* Group 1: Dynamic Mode Options (Width varies by view) */}
           {currentView === 'planner' && (
             <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
               {plannerWidthOptions.map((option) => {
@@ -426,18 +394,37 @@ export default function App() {
 
           {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
             <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
-              {(['list', 'outline'] as TaskListMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setTaskListMode(mode)}
-                  className={`flex h-[30px] items-center justify-center rounded-md px-2.5 text-[10px] font-bold uppercase tracking-[0.16em] transition-all ${settings.taskListMode === mode ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                >
-                  {mode}
-                </button>
-              ))}
+              {(['list', 'outline'] as TaskListMode[]).map((mode) => {
+                const Icon = mode === 'list' ? LayoutList : AlignLeft;
+                const label = mode.charAt(0).toUpperCase() + mode.slice(1);
+                const isActive = settings.taskListMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setTaskListMode(mode)}
+                    className={`flex h-[30px] items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-all ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    title={`${label} Mode`}
+                  >
+                    <Icon size={13} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
+
+          <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
+
+          {/* Group 2: Static View Toggles */}
+          <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
+            <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Planner (8)">
+              <Columns size={16} />
+            </button>
+            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View (1-7)">
+              <List size={16} />
+            </button>
+          </div>
 
           <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
             <button
@@ -450,11 +437,36 @@ export default function App() {
             </button>
           </div>
 
-          <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
-
           <button type="button" onClick={() => setShowShortcutsModal(true)} className="flex h-[30px] w-[34px] items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]" title="Shortcuts (K)">
             <Keyboard size={18} />
           </button>
+
+          <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
+
+          {/* Group 3: New Task Input (Right-most) */}
+          <div className="group panel-muted flex items-center rounded-xl border soft-divider p-1 transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_1px_var(--accent-soft)]">
+            <div className="flex h-[30px] items-center pl-2.5">
+              <Plus size={14} className="shrink-0 text-[var(--text-muted)] transition-colors group-focus-within:text-[var(--accent)]" />
+            </div>
+            <form onSubmit={handleAddNewTask}>
+              <input
+                ref={newTaskInputRef}
+                placeholder="New item..."
+                className="flex h-[30px] w-32 bg-transparent px-2.5 text-[12.5px] font-medium text-[var(--text-primary)] outline-none transition-all placeholder:font-normal placeholder:text-[var(--text-muted)] focus:w-48"
+                value={newTaskTitle}
+                onChange={(event) => setNewTaskTitle(event.target.value)}
+              />
+            </form>
+            {!newTaskTitle ? (
+              <div className="flex h-[30px] pointer-events-none items-center pr-1 transition-opacity group-focus-within:opacity-0">
+                <span className="flex h-5 items-center justify-center rounded border soft-divider bg-[var(--panel-bg)] px-1.5 text-[10px] font-bold text-[var(--text-muted)] shadow-sm">N</span>
+              </div>
+            ) : (
+              <button type="button" onClick={() => handleAddNewTask()} className="mr-0.5 flex h-[26px] items-center rounded-md bg-[var(--accent)] px-2.5 text-[11px] font-bold text-white shadow-sm transition-all hover:brightness-110 active:scale-95">
+                Add
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -595,6 +607,7 @@ export default function App() {
               onUpdateTask={updateTask}
               onMoveTaskBefore={moveTaskBeforeFlat}
               onMoveTaskAfter={moveTaskAfterFlat}
+              onToggleComplete={toggleComplete}
               onAddTask={(title, dueDate) => addTask(title, dueDate ? 'scheduled' : 'next', selectedArea || 'Personal', null, dueDate || null)}
               onAddProjectTask={(title, projectId) => addTask(title, 'next', selectedArea || 'Personal', projectId, null)}
               onOpenTask={setTaskToEditInModal}
