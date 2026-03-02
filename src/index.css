@@ -171,17 +171,15 @@ select {
   box-shadow: none;
 }
 
-@keyframes brutal-strike {
+@keyframes subtle-strike {
   0% { transform: scaleX(0); opacity: 0; }
-  10% { opacity: 1; transform: scaleX(0); }
   100% { transform: scaleX(1); opacity: 1; }
 }
 
-@keyframes brutal-bounce {
-  0% { transform: scale(1) translate(0, 0); }
-  20% { transform: scale(0.96) translate(2px, 1px); }
-  45% { transform: scale(1.02) translate(-1px, -1px); }
-  100% { transform: scale(1) translate(0, 0); }
+@keyframes subtle-bounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.98); }
+  100% { transform: scale(1); }
 }
 
 .brutal-strike-line {
@@ -191,19 +189,18 @@ select {
 .brutal-strike-line::after {
   content: "";
   position: absolute;
-  top: 50%;
-  left: -2%;
-  width: 104%;
-  height: 3px;
-  background-color: var(--text-muted);
+  top: 51%;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background-color: currentColor;
   transform-origin: left;
-  border-radius: 1px;
 }
 
 .animate-strike::after {
-  animation: brutal-strike 0.25s cubic-bezier(0.25, 1, 0.3, 1) forwards;
+  animation: subtle-strike 0.15s ease-out forwards;
 }
 
 .brutal-row-bounce {
-  animation: brutal-bounce 0.35s cubic-bezier(0.25, 1, 0.3, 1) forwards;
+  animation: subtle-bounce 0.2s ease-in-out forwards;
 }

@@ -25,9 +25,15 @@ import {
 import { SidebarItem } from '../components/SidebarItem';
 import { ShortcutsModal } from '../components/ShortcutsModal';
 import { getWeekDays, getWeekRangeLabel } from '../lib/date';
+import {
+  createTaskListExchangePayload,
+  createTaskListMarkdown,
+  createTaskListProgressPrompt,
+  isTaskListExchange,
+} from '../lib/taskListExchange';
 import { getThemeVariables } from '../lib/theme';
 import { createExportPayload, useAppStore } from '../store/useAppStore';
-import { AppDataExport, AppView, PlannerWidthMode, Task, TaskStatus } from '../types';
+import { AppDataExport, AppView, PlannerWidthMode, Task, TaskListMode, TaskListImportMode, TaskListScope, TaskStatus } from '../types';
 import { CommandItem, CommandPalette } from '../features/command-palette/CommandPalette';
 import { PlannerView } from '../features/planner/PlannerView';
 import { SearchView } from '../features/search/SearchView';
@@ -82,6 +88,7 @@ export default function App() {
     toggleTaskCollapsed,
     saveTheme,
     importAppData,
+    importTaskListData,
     setShowCompletedTasks,
   } = useAppStore();
 
@@ -418,6 +425,21 @@ export default function App() {
             </div>
           )}
 
+          {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
+            <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
+              {(['list', 'outline'] as TaskListMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setTaskListMode(mode)}
+                  className={`flex h-[30px] items-center justify-center rounded-md px-2.5 text-[10px] font-bold uppercase tracking-[0.16em] transition-all ${settings.taskListMode === mode ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
 
           <button
@@ -589,6 +611,7 @@ export default function App() {
 
           {currentView === 'settings' && (
             <SettingsView
+              projects={projects}
               themes={themes}
               activeThemeId={settings.activeThemeId}
               onSetActiveTheme={setActiveTheme}
@@ -596,6 +619,30 @@ export default function App() {
               onImportData={(payload) => {
                 if (!isAppExport(payload)) return;
                 importAppData(payload);
+              }}
+              onExportTaskListJson={(scope: TaskListScope) => {
+                const payload = createTaskListExchangePayload(tasks, projects, scope);
+                const scopeName = scope.type === 'inbox' ? 'inbox' : scope.projectId;
+                downloadJson(`too-much-to-do-${scopeName}-list-${new Date().toISOString().slice(0, 10)}.json`, payload);
+              }}
+              onImportTaskListJson={(payload, mode: TaskListImportMode) => {
+                if (!isTaskListExchange(payload)) return;
+                importTaskListData(payload, mode);
+              }}
+              onExportTaskListMarkdown={(scope: TaskListScope) => {
+                const markdown = createTaskListMarkdown(tasks, projects, scope);
+                const scopeName = scope.type === 'inbox' ? 'inbox' : scope.projectId;
+                const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `too-much-to-do-${scopeName}-list-${new Date().toISOString().slice(0, 10)}.md`;
+                link.click();
+                URL.revokeObjectURL(url);
+              }}
+              onCopyTaskListProgressPrompt={async (scope: TaskListScope) => {
+                const prompt = createTaskListProgressPrompt(tasks, projects, scope);
+                await navigator.clipboard.writeText(prompt);
               }}
               onSaveTheme={saveTheme}
             />

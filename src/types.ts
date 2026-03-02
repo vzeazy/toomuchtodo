@@ -78,3 +78,40 @@ export interface AppDataExport {
   app: 'too-much-to-do';
   data: AppStateData;
 }
+
+export type TaskListScope =
+  | { type: 'inbox' }
+  | { type: 'project'; projectId: string };
+
+export type TaskListImportMode = 'append' | 'upsert' | 'replace-list';
+
+export interface TaskListExchangeProject {
+  id: string;
+  name: string;
+  parentId: string | null;
+  color?: string;
+}
+
+export interface TaskListExchangeTask {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  isStarred: boolean;
+  projectId: string | null;
+  area: string;
+  dueDate: string | null;
+  parentId: string | null;
+  collapsed: boolean;
+  createdAt: number;
+  tags: string[];
+}
+
+export interface TaskListExchange {
+  schema: 'too-much-to-do.task-list';
+  version: number;
+  exportedAt: string;
+  scope: TaskListScope;
+  projects: TaskListExchangeProject[];
+  tasks: TaskListExchangeTask[];
+}

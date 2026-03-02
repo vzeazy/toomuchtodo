@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { moveTaskSubtree, moveTaskSubtreePreserveParent, updateTaskParent } from '../features/tasks/taskTree';
 import { builtInThemes } from '../themes/builtInThemes';
-import { AppDataExport, AppSettings, AppStateData, PlannerWidthMode, Project, Task, TaskListMode, TaskStatus, ThemeDefinition } from '../types';
+import {
+  AppDataExport,
+  AppSettings,
+  AppStateData,
+  PlannerWidthMode,
+  Project,
+  Task,
+  TaskListExchange,
+  TaskListImportMode,
+  TaskListMode,
+  TaskStatus,
+  ThemeDefinition,
+} from '../types';
 
 const STORAGE_KEY = 'too_much_to_do_state_v1';
 const LEGACY_TASKS_KEY = 'nirvana_tasks';
@@ -293,6 +305,82 @@ export const useAppStore = () => {
     });
   }, []);
 
+  const importTaskListData = useCallback((payload: TaskListExchange, mode: TaskListImportMode) => {
+    setState((prev) => {
+      const scope = payload.scope;
+      const isInScope = (task: Task) => scope.type === 'inbox' ? task.status === 'inbox' : task.projectId === scope.projectId;
+      const existingScopeIds = new Set(prev.tasks.filter(isInScope).map((task) => task.id));
+      const preservedTasks = mode === 'replace-list' ? prev.tasks.filter((task) => !isInScope(task)) : prev.tasks;
+
+      let nextProjects = [...prev.projects];
+      const projectIdMap = new Map<string, string>();
+
+      for (const project of payload.projects || []) {
+        const normalized = normalizeProject(project);
+        const existing = nextProjects.find((item) => item.id === normalized.id);
+        if (existing) {
+          projectIdMap.set(project.id, existing.id);
+          if (mode !== 'append') {
+            nextProjects = nextProjects.map((item) => item.id === existing.id ? normalizeProject({ ...item, ...normalized, id: item.id }) : item);
+          }
+          continue;
+        }
+        nextProjects.push(normalized);
+        projectIdMap.set(project.id, normalized.id);
+      }
+
+      if (scope.type === 'project' && !nextProjects.some((project) => project.id === scope.projectId)) {
+        nextProjects.push(normalizeProject({ id: scope.projectId, name: 'Imported Project', parentId: null }));
+      }
+
+      const incomingTasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+      const incomingIds = new Set(incomingTasks.map((task) => task.id));
+      const idMap = new Map<string, string>();
+      const occupiedIds = new Set(preservedTasks.map((task) => task.id));
+
+      for (const task of incomingTasks) {
+        let nextId = typeof task.id === 'string' && task.id.trim() ? task.id : uid('task');
+        if (mode === 'append') nextId = uid('task');
+        else if (mode === 'upsert' && occupiedIds.has(nextId) && !existingScopeIds.has(nextId)) nextId = uid('task');
+        else if (mode === 'replace-list' && occupiedIds.has(nextId)) nextId = uid('task');
+        idMap.set(task.id, nextId);
+        occupiedIds.add(nextId);
+      }
+
+      const normalizedImportedTasks = incomingTasks.map((task) => {
+        const normalized = normalizeTask(task);
+        const mappedId = idMap.get(task.id) || uid('task');
+        const mappedParentId = normalized.parentId && incomingIds.has(normalized.parentId) ? idMap.get(normalized.parentId) || null : null;
+        const mappedProjectId = normalized.projectId ? (projectIdMap.get(normalized.projectId) || normalized.projectId) : null;
+
+        return normalizeTask({
+          ...normalized,
+          id: mappedId,
+          parentId: mappedParentId,
+          projectId: scope.type === 'project' ? scope.projectId : mappedProjectId,
+          status: scope.type === 'inbox' ? 'inbox' : normalized.status,
+        });
+      });
+
+      if (mode === 'upsert') {
+        const importById = new Map(normalizedImportedTasks.map((task) => [task.id, task]));
+        const updated = prev.tasks.map((task) => {
+          const candidate = importById.get(task.id);
+          return candidate ? normalizeTask({ ...task, ...candidate, id: task.id }) : task;
+        });
+        const knownIds = new Set(updated.map((task) => task.id));
+        const additions = normalizedImportedTasks.filter((task) => !knownIds.has(task.id));
+        return { ...prev, projects: nextProjects, tasks: [...updated, ...additions] };
+      }
+
+      return {
+        ...prev,
+        projects: nextProjects,
+        tasks: [...preservedTasks, ...normalizedImportedTasks],
+      };
+    });
+  }, []);
+
   const setPlannerWidthMode = useCallback((plannerWidthMode: PlannerWidthMode) => {
     setState((prev) => ({ ...prev, settings: { ...prev.settings, plannerWidthMode } }));
   }, []);
@@ -360,5 +448,6 @@ export const useAppStore = () => {
     toggleTaskCollapsed,
     saveTheme,
     importAppData,
+    importTaskListData,
   };
 };

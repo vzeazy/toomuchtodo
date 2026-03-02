@@ -260,18 +260,6 @@ export const TaskListView: React.FC<{
               </div>
             </div>
 
-            <div className="panel-muted inline-flex items-center rounded-full border soft-divider p-1">
-              {(['list', 'outline'] as TaskListMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => onTaskListModeChange(mode)}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] transition-all ${taskListMode === mode ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 

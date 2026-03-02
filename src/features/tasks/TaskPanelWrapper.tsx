@@ -109,8 +109,44 @@ export const TaskPanelWrapper: React.FC<{
       }
     }, [panel.view, projects, selectedArea, selectedPlannerDay, panel.projectId]);
 
+    const child = (
+      <TaskListView
+        tasks={taskListTasks}
+        allTasks={tasks}
+        projects={projects}
+        headerTitle={headerTitle}
+        currentView={panel.view}
+        selectedArea={selectedArea}
+        selectedProjectId={panel.projectId}
+        expandedTaskId={expandedTaskId}
+        itemCount={filteredTasks.length}
+        matchedTaskIds={matchedTaskIds}
+        taskListMode={settings.taskListMode}
+        backLabel={panel.view === 'day' ? 'Back to week' : undefined}
+        onExpandTask={setExpandedTaskId}
+        onAddTask={(title) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null)}
+        onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id)}
+        onTaskListModeChange={setTaskListMode}
+        onToggleStar={toggleStar}
+        onToggleComplete={toggleComplete}
+        onUpdateTask={updateTask}
+        onReorderTasks={reorderTasks}
+        onMoveTaskBefore={moveTaskBefore}
+        onMoveTaskAfter={moveTaskAfter}
+        onToggleTaskCollapsed={toggleTaskCollapsed}
+        onDeleteTask={deleteTask}
+        onOpenTask={setTaskToEditInModal as any}
+        onOpenDate={onOpenDate}
+        onBack={onBack}
+      />
+    );
+
+    if (isSingle) {
+      return child;
+    }
+
     return (
-      <div className={`relative h-full flex flex-col flex-1 overflow-y-auto ${isSingle ? '' : 'shrink-0 min-w-[320px] max-w-[800px] border-r soft-divider pr-8'}`} style={{ scrollbarWidth: 'none' }}>
+      <div className="relative h-full flex flex-col flex-1 shrink-0 min-w-[320px] max-w-[800px] border-r soft-divider pr-8 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
         {onClose && (
           <button
             onClick={onClose}
@@ -122,35 +158,7 @@ export const TaskPanelWrapper: React.FC<{
             </svg>
           </button>
         )}
-        <TaskListView
-          tasks={taskListTasks}
-          allTasks={tasks}
-          projects={projects}
-          headerTitle={headerTitle}
-          currentView={panel.view}
-          selectedArea={selectedArea}
-          selectedProjectId={panel.projectId}
-          expandedTaskId={expandedTaskId}
-          itemCount={filteredTasks.length}
-          matchedTaskIds={matchedTaskIds}
-          taskListMode={settings.taskListMode}
-          backLabel={panel.view === 'day' ? 'Back to week' : undefined}
-          onExpandTask={setExpandedTaskId}
-          onAddTask={(title) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null)}
-          onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id)}
-          onTaskListModeChange={setTaskListMode}
-          onToggleStar={toggleStar}
-          onToggleComplete={toggleComplete}
-          onUpdateTask={updateTask}
-          onReorderTasks={reorderTasks}
-          onMoveTaskBefore={moveTaskBefore}
-          onMoveTaskAfter={moveTaskAfter}
-          onToggleTaskCollapsed={toggleTaskCollapsed}
-          onDeleteTask={deleteTask}
-          onOpenTask={setTaskToEditInModal as any}
-          onOpenDate={onOpenDate}
-          onBack={onBack}
-        />
+        {child}
       </div>
     );
   };

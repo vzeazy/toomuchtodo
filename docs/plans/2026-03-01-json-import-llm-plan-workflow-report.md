@@ -13,6 +13,43 @@ Design a clean, reliable way for this app to:
 
 ---
 
+## Progress log
+
+### 2026-03-02 - Scoped roundtrip implementation completed
+
+- Added new scoped task-list exchange schema/types:
+  - `TaskListScope`
+  - `TaskListImportMode`
+  - `TaskListExchange` (+ project/task payload types)
+- Implemented task-list exchange helpers in `src/lib/taskListExchange.ts`:
+  - scoped JSON payload export for Inbox/Project
+  - JSON shape guard
+  - scoped progress prompt generator (LLM handoff)
+  - simple markdown export renderer
+- Added scoped import engine in store (`importTaskListData`) with:
+  - `append` mode
+  - `upsert` mode
+  - `replace-list` mode
+- Added Settings UI for scoped roundtrip:
+  - scope selector (Inbox or Project)
+  - import mode selector
+  - export list JSON
+  - import list JSON (with confirmation)
+  - export list markdown
+  - copy progress prompt
+- Wired new Settings actions in app shell (`src/app/App.tsx`).
+- Verified with production build: `npm run build` (pass).
+
+Nuances:
+
+- This phase intentionally implements **Markdown export only** (not Markdown import), matching current scoped plan boundaries.
+- Scoped import currently enforces scope consistency:
+  - Inbox imports are normalized to `status: inbox`
+  - Project imports are normalized to the selected project id
+- This gives predictable behavior for list roundtrips while avoiding higher-risk parser/import ambiguity.
+
+---
+
 ## What exists today (codebase findings)
 
 ### 1) Data model and persistence
