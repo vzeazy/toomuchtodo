@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, CornerDownRight, ExternalLink, GripVertical, MoreVertical, NotebookPen, Plus, Star, Trash2 } from 'lucide-react';
-import { MarkdownEditor } from '../../components/MarkdownEditor';
+import { CheckCircle2, CornerDownRight, ExternalLink, GripVertical, MoreVertical, AlignLeft, Plus, Star, Trash2 } from 'lucide-react';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
-import { renderMarkdown } from '../../lib/markdown';
 import { Project, Task } from '../../types';
 
 export const TaskRow: React.FC<{
@@ -11,7 +9,6 @@ export const TaskRow: React.FC<{
   allTasks: Task[];
   projects: Project[];
   childCount?: number;
-  isExpanded: boolean;
   onToggleStar: (id: string) => void;
   onToggleComplete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Task>) => void;
@@ -19,11 +16,10 @@ export const TaskRow: React.FC<{
   onMoveAfter: (sourceId: string, targetId: string) => void;
   onNestInto: (sourceId: string, targetId: string) => void;
   onDelete: (id: string) => void;
-  onSelect: (id: string | null) => void;
   onOpenTask: (task: Task) => void;
   canNestTask: (sourceId: string, targetId: string) => boolean;
   onAddSubtask: (parentTask: Task, title: string) => void;
-}> = ({ task, allTasks, projects, childCount = 0, isExpanded, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onSelect, onOpenTask, canNestTask, onAddSubtask }) => {
+}> = ({ task, allTasks, projects, childCount = 0, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [isOver, setIsOver] = useState(false);
   const [dropMode, setDropMode] = useState<'before' | 'inside' | 'after'>('inside');
@@ -33,21 +29,32 @@ export const TaskRow: React.FC<{
   const [draftSubtaskTitle, setDraftSubtaskTitle] = useState('');
   const [draftTitle, setDraftTitle] = useState(task.title);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [isJustCompleted, setIsJustCompleted] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const clickTimeoutRef = useRef<number | null>(null);
+  const prevStatusRef = useRef(task.status);
 
   useEffect(() => {
     setDraftTitle(task.title);
   }, [task.title]);
 
   useEffect(() => {
-    if (!isExpanded) {
-      setShowNotesEditor(false);
-      setIsAddingSubtask(false);
-      setDraftSubtaskTitle('');
+    setShowNotesEditor(false);
+    setIsAddingSubtask(false);
+    setDraftSubtaskTitle('');
+  }, [task.id]);
+
+  useEffect(() => {
+    if (prevStatusRef.current !== 'completed' && task.status === 'completed') {
+      setIsJustCompleted(true);
+      const timer = setTimeout(() => setIsJustCompleted(false), 600);
+      return () => clearTimeout(timer);
+    } else if (task.status !== 'completed') {
+      setIsJustCompleted(false);
     }
-  }, [isExpanded]);
+    prevStatusRef.current = task.status;
+  }, [task.status]);
 
   const updateMenuPosition = useCallback(() => {
     const button = menuButtonRef.current;
@@ -99,7 +106,7 @@ export const TaskRow: React.FC<{
       window.clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
     }
-    onSelect(isExpanded ? null : task.id);
+    onOpenTask(task);
   };
 
   const commitTitleEdit = () => {
@@ -107,18 +114,6 @@ export const TaskRow: React.FC<{
     if (nextTitle && nextTitle !== task.title) onUpdate(task.id, { title: nextTitle });
     setDraftTitle(nextTitle || task.title);
     setIsEditingTitle(false);
-  };
-
-  const commitSubtask = (keepOpen = false) => {
-    const nextTitle = draftSubtaskTitle.trim();
-    if (!nextTitle) {
-      setIsAddingSubtask(false);
-      setDraftSubtaskTitle('');
-      return;
-    }
-    onAddSubtask(task, nextTitle);
-    setDraftSubtaskTitle('');
-    setIsAddingSubtask(keepOpen);
   };
 
   const subtasks = allTasks.filter((item) => item.parentId === task.id);
@@ -153,10 +148,10 @@ export const TaskRow: React.FC<{
         }
         setDropMode('inside');
       }}
-      className={`group relative flex flex-col transition-colors ${isExpanded ? 'bg-[rgba(255,255,255,0.02)]' : 'hover:bg-[rgba(255,255,255,0.015)]'} ${isOver && dropMode === 'inside' ? 'border-l-2 border-l-[var(--accent)] bg-[rgba(255,255,255,0.02)]' : ''}`}
+      className={`group relative flex flex-col transition-all rounded-xl hover:bg-[rgba(255,255,255,0.015)] ${isOver && dropMode === 'inside' ? 'ring-2 ring-inset ring-[var(--accent)] bg-[var(--accent-soft)] z-10' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
     >
-      {isOver && dropMode === 'before' && <div className="absolute inset-x-0 top-0 h-px bg-[var(--accent)]" />}
-      {isOver && dropMode === 'after' && <div className="absolute inset-x-0 bottom-0 h-px bg-[var(--accent)]" />}
+      {isOver && dropMode === 'before' && <div className="absolute inset-x-0 top-0 z-20 h-[2px] bg-[var(--accent)] shadow-[0_0_8px_var(--accent)]" />}
+      {isOver && dropMode === 'after' && <div className="absolute inset-x-0 bottom-0 z-20 h-[2px] bg-[var(--accent)] shadow-[0_0_8px_var(--accent)]" />}
       <div
         className="relative flex cursor-pointer items-center gap-3 pl-0 pr-5 py-2.5"
         onClick={handleRowClick}
@@ -191,12 +186,12 @@ export const TaskRow: React.FC<{
               />
             ) : (
               <span
-                className={`truncate text-[13px] font-normal tracking-[-0.01em] ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-primary)]'}`}
+                className={`truncate text-[13px] font-normal tracking-[-0.01em] ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
               >
                 {task.title}
               </span>
             )}
-            {task.description.trim() && <NotebookPen size={14} className="shrink-0 text-[var(--text-muted)]" title="Task has notes" />}
+            {task.description.trim() && <AlignLeft size={14} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" title="Task has notes" />}
           </div>
           {(task.tags.length > 0 || task.projectId) && (
             <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
@@ -240,7 +235,7 @@ export const TaskRow: React.FC<{
       {showMenu && createPortal(
         <div ref={menuRef} className="fixed z-[2300] w-56 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--elevated-bg)] shadow-2xl" style={{ top: menuPosition.top, left: menuPosition.left }}>
           <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTask(task); setShowMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">
-            <NotebookPen size={12} /> Open task
+            <ExternalLink size={13} /> Open task
           </button>
           <div className="my-1 border-t border-[var(--border-color)]" />
           <div className="bg-[var(--panel-alt-bg)] px-3 py-1.5 text-[10px] font-bold uppercase text-[var(--text-muted)]">Project</div>
@@ -256,126 +251,6 @@ export const TaskRow: React.FC<{
           </button>
         </div>,
         document.body
-      )}
-
-      {isExpanded && (
-        <div className="px-12 pb-4 pt-1" onClick={(event) => event.stopPropagation()}>
-          <div className="space-y-4">
-            {!showNotesEditor && task.description.trim() && (
-              <button
-                type="button"
-                onClick={() => setShowNotesEditor(true)}
-                className="block w-full text-left"
-              >
-                <div
-                  className="markdown-preview max-h-[4.6rem] overflow-hidden text-[12px] leading-relaxed text-[var(--text-secondary)] opacity-90 transition-opacity hover:opacity-100"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(task.description) }}
-                />
-              </button>
-            )}
-
-            {showNotesEditor && (
-              <MarkdownEditor value={task.description} onChange={(value) => onUpdate(task.id, { description: value })} minHeightClassName="min-h-[120px]" />
-            )}
-
-            {(subtasks.length > 0 || isAddingSubtask) && (
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">Subtasks</div>
-                  {!isAddingSubtask && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingSubtask(true)}
-                      className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-                    >
-                      <Plus size={11} />
-                      Add
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {subtasks.map((subtask) => (
-                    <button
-                      key={subtask.id}
-                      type="button"
-                      onClick={() => onOpenTask(subtask)}
-                      className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
-                    >
-                      <TaskCheckbox checked={subtask.status === 'completed'} onToggle={() => onToggleComplete(subtask.id)} />
-                      <span className={`min-w-0 flex-1 truncate text-[13px] ${subtask.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{subtask.title}</span>
-                      {subtask.description.trim() && <NotebookPen size={12} className="shrink-0 text-[var(--text-muted)]" />}
-                    </button>
-                  ))}
-                  {isAddingSubtask && (
-                    <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-2 py-1.5">
-                      <CornerDownRight size={12} className="shrink-0 text-[var(--text-muted)]" />
-                      <input
-                        autoFocus
-                        value={draftSubtaskTitle}
-                        onChange={(event) => setDraftSubtaskTitle(event.target.value)}
-                        onBlur={commitSubtask}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            commitSubtask(true);
-                          }
-                          if (event.key === 'Escape') {
-                            event.preventDefault();
-                            setIsAddingSubtask(false);
-                            setDraftSubtaskTitle('');
-                          }
-                        }}
-                        placeholder="New subtask"
-                        className="w-full bg-transparent text-[13px] text-[var(--text-primary)] outline-none"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="panel-muted inline-flex flex-wrap items-center gap-1 rounded-full border soft-divider p-1">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingSubtask(true)}
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[var(--text-primary)]"
-                >
-                  <CornerDownRight size={12} />
-                  <span>Subtask</span>
-                </button>
-                {!task.description.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => setShowNotesEditor(true)}
-                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[var(--text-primary)]"
-                  >
-                    <Plus size={12} />
-                    <span>Note</span>
-                  </button>
-                )}
-                {showNotesEditor && (
-                  <button
-                    type="button"
-                    onClick={() => setShowNotesEditor(false)}
-                    className="inline-flex items-center gap-2 rounded-full bg-[rgba(255,255,255,0.04)] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.07)]"
-                  >
-                    <NotebookPen size={12} />
-                    <span>Hide Note</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onOpenTask(task)}
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:bg-[rgba(255,255,255,0.05)] hover:text-[var(--text-primary)]"
-                >
-                  <ExternalLink size={12} />
-                  <span>Open</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

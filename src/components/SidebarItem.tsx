@@ -5,7 +5,7 @@ export const SidebarItem: React.FC<{
   label: string;
   count?: number;
   active: boolean;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent) => void;
   onDrop?: (id: string) => void;
   className?: string;
   iconColor?: string;

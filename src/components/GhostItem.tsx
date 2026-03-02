@@ -3,22 +3,27 @@ import { Plus } from 'lucide-react';
 
 export const GhostItem: React.FC<{
   placeholder: string;
-  onAdd: (title: string) => void;
+  onAdd: (title: string, indentMode?: 'indent' | 'none') => void;
   className?: string;
   iconSize?: number;
 }> = ({ placeholder, onAdd, className = '', iconSize = 14 }) => {
   const [value, setValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [indentMode, setIndentMode] = useState<'indent' | 'none'>('none');
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      setIndentMode(event.shiftKey ? 'none' : 'indent');
+    }
     if (event.key === 'Enter' && value.trim()) {
-      onAdd(value.trim());
+      onAdd(value.trim(), indentMode);
       setValue('');
     }
   };
 
   return (
-    <div className={`group/ghost flex items-center gap-2 rounded px-2 py-1.5 transition-all ${isFocused ? 'bg-[rgba(255,255,255,0.03)]' : 'hover:bg-[rgba(255,255,255,0.02)]'} ${className}`}>
+    <div className={`group/ghost flex items-center gap-2 rounded px-2 py-1.5 transition-all ${isFocused ? 'bg-[rgba(255,255,255,0.03)]' : 'hover:bg-[rgba(255,255,255,0.02)]'} ${className}`} style={{ paddingLeft: indentMode === 'indent' ? '32px' : undefined }}>
       <Plus size={iconSize} className={`transition-colors ${isFocused ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] group-hover/ghost:text-[var(--text-secondary)]'}`} />
       <input
         type="text"

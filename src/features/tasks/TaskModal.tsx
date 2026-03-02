@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Star, Trash2, X, Plus, CornerDownRight, NotebookPen } from 'lucide-react';
+import { Star, Trash2, X, Plus, CornerDownRight, AlignLeft } from 'lucide-react';
+import { SmartSelect } from '../../components/SmartSelect';
 import { MarkdownEditor } from '../../components/MarkdownEditor';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
 import { Project, Task } from '../../types';
@@ -43,8 +44,8 @@ export const TaskModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-md transition-opacity" onClick={onClose}>
-      <div className="panel-surface flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[26px] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-[2100] flex justify-end bg-[var(--overlay)] backdrop-blur-[2px] transition-opacity" onClick={onClose}>
+      <div className="panel-surface flex h-full w-full max-w-[500px] flex-col shadow-[-10px_0_40px_rgba(0,0,0,0.1)] border-l soft-divider animate-in slide-in-from-right duration-200" onClick={(event) => event.stopPropagation()}>
 
         {/* Header - Seamless */}
         <div className="flex shrink-0 items-center justify-between px-8 pb-4 pt-7">
@@ -101,7 +102,7 @@ export const TaskModal: React.FC<{
                   >
                     <TaskCheckbox checked={subtask.status === 'completed'} onToggle={() => onToggleComplete(subtask.id)} />
                     <span className={`block flex-1 truncate text-[13px] tracking-[-0.01em] ${subtask.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>{subtask.title}</span>
-                    {subtask.description.trim() && <NotebookPen size={12} className="shrink-0 text-[var(--text-muted)]" />}
+                    {subtask.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" />}
                   </button>
                 ))}
                 {isAddingSubtask && (
@@ -146,38 +147,39 @@ export const TaskModal: React.FC<{
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Project</label>
-                <select
+                <SmartSelect
+                  className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                   value={task.projectId || ''}
-                  onChange={(event) => onUpdate(task.id, { projectId: event.target.value || null })}
-                  className="w-full cursor-pointer appearance-none bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
-                >
-                  <option value="" className="bg-[var(--panel-bg)]">No Project</option>
-                  {projects.map((project) => <option key={project.id} value={project.id} className="bg-[var(--panel-bg)]">{project.name}</option>)}
-                </select>
+                  onChange={(val) => onUpdate(task.id, { projectId: val || null })}
+                  options={[
+                    ...projects.map((p) => ({ value: p.id, label: p.name }))
+                  ]}
+                  placeholder="No Project"
+                />
               </div>
 
               <div>
                 <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Area</label>
-                <select
+                <SmartSelect
+                  className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                   value={task.area}
-                  onChange={(event) => onUpdate(task.id, { area: event.target.value })}
-                  className="w-full cursor-pointer appearance-none bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
-                >
-                  {AREAS.map((area) => <option key={area} value={area} className="bg-[var(--panel-bg)]">{area}</option>)}
-                </select>
+                  onChange={(val) => onUpdate(task.id, { area: val })}
+                  options={AREAS.map((a) => ({ value: a, label: a }))}
+                />
               </div>
             </div>
 
             <div>
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Parent Task</label>
-              <select
+              <SmartSelect
+                className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                 value={task.parentId || ''}
-                onChange={(event) => onSetParent(task.id, event.target.value || null)}
-                className="w-full cursor-pointer appearance-none bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
-              >
-                <option value="" className="bg-[var(--panel-bg)]">Top level</option>
-                {availableParents.map((candidate) => <option key={candidate.id} value={candidate.id} className="bg-[var(--panel-bg)]">{candidate.title}</option>)}
-              </select>
+                onChange={(val) => onSetParent(task.id, val || null)}
+                options={[
+                  ...availableParents.map((t) => ({ value: t.id, label: t.title }))
+                ]}
+                placeholder="Top level"
+              />
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">

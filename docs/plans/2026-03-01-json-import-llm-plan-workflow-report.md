@@ -322,3 +322,40 @@ The cleanest path is a **dual-schema strategy**:
 - add a dedicated **Plan Bundle** JSON format with provenance + relative schedule semantics
 
 Then wire a new "Plans" management layer that supports import/update/strip and generates an LLM-ready progress prompt from tracked event history. This gives you the loop you described: **LLM generates plan -> app imports and tracks -> app exports progress context -> LLM suggests timeline updates -> app reapplies cleanly**.
+
+---
+
+## Scope update (2026-03-01)
+
+Per latest direction, keep the hardest pieces out for now.
+
+### In scope now
+
+1. **Scoped task-list JSON round-trip (Inbox or single Project)**
+   - Export selected list to LLM-friendly JSON.
+   - Re-import with `append` / `upsert` / `replace-list` modes.
+   - Keep preview + validation before apply.
+
+2. **LLM progress prompt export for a scoped list**
+   - Export concise status/progress context for that Inbox/Project list.
+   - Use same provenance IDs to safely apply updated JSON.
+
+3. **Simple Markdown export (one-way)**
+   - Export Inbox/Project lists to readable `.md`.
+   - Include title, status marker, due date, tags, and nesting.
+
+### Explicitly out of scope for now
+
+1. **Markdown/TaskPaper import**
+   - Deferred due to parser ambiguity and higher error risk.
+2. **Advanced dependency scheduling and auto-reflow logic**
+   - Deferred until scoped JSON loop is stable.
+3. **Complex event-log analytics UI**
+   - Keep basic event capture only in this phase.
+
+### Revised delivery order
+
+1. Add scoped JSON exporter/importer for Inbox/Project lists.
+2. Add LLM progress prompt export for scoped lists.
+3. Add simple Markdown export for scoped lists.
+4. Defer Markdown/TaskPaper import until later hardening phase.

@@ -72,6 +72,7 @@ const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
   plannerWidthMode: 'container',
   taskListMode: 'list',
+  showCompletedTasks: true,
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -119,6 +120,7 @@ const getInitialState = (): AppStateData => {
           activeThemeId: parsed.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
           plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
           taskListMode: (parsed.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
+          showCompletedTasks: parsed.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
         },
         themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
       };
@@ -285,6 +287,7 @@ export const useAppStore = () => {
         activeThemeId: imported.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
         plannerWidthMode: (imported.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
         taskListMode: (imported.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
+        showCompletedTasks: imported.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
       },
       themes: dedupeThemes([...(Array.isArray(imported.themes) ? imported.themes : []), ...builtInThemes]),
     });
@@ -296,6 +299,10 @@ export const useAppStore = () => {
 
   const setTaskListMode = useCallback((taskListMode: TaskListMode) => {
     setState((prev) => ({ ...prev, settings: { ...prev.settings, taskListMode } }));
+  }, []);
+
+  const setShowCompletedTasks = useCallback((showCompletedTasks: boolean) => {
+    setState((prev) => ({ ...prev, settings: { ...prev.settings, showCompletedTasks } }));
   }, []);
 
   const setTaskParent = useCallback((taskId: string, parentId: string | null) => {
@@ -344,6 +351,7 @@ export const useAppStore = () => {
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,
+    setShowCompletedTasks,
     setTaskParent,
     moveTaskBefore,
     moveTaskAfter,

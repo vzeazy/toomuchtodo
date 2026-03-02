@@ -8,6 +8,8 @@ import {
   Clock,
   CloudRain,
   Columns,
+  Eye,
+  EyeOff,
   Folder,
   Inbox,
   Keyboard,
@@ -32,6 +34,7 @@ import { SearchView } from '../features/search/SearchView';
 import { SettingsView } from '../features/settings/SettingsView';
 import { TaskListView } from '../features/tasks/TaskListView';
 import { TaskModal } from '../features/tasks/TaskModal';
+import { TaskPanelWrapper, PanelState } from '../features/tasks/TaskPanelWrapper';
 import { collectTaskIdsWithAncestors } from '../features/tasks/taskTree';
 
 const AREAS = ['Personal', 'Work', 'Leisure', 'Finance'];
@@ -79,6 +82,7 @@ export default function App() {
     toggleTaskCollapsed,
     saveTheme,
     importAppData,
+    setShowCompletedTasks,
   } = useAppStore();
 
   const [currentView, setCurrentView] = useState<AppView>('planner');
@@ -99,28 +103,58 @@ export default function App() {
 
   const [startPlannerOnToday, setStartPlannerOnToday] = useState(false);
 
+  const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
+
+  const handleViewSelect = useCallback((event: React.MouseEvent | undefined, view: AppView, projectId: string | null = null, dateStr: string | null = null) => {
+    const isMulti = event && (event.shiftKey || event.metaKey || event.ctrlKey);
+    if (isMulti && currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search') {
+      // Prevent duplicates
+      if (currentView === view && selectedProjectId === projectId && selectedPlannerDate === dateStr) return;
+      setAdditionalPanels((prev) => {
+        if (prev.some(p => p.view === view && p.projectId === projectId && p.dateStr === dateStr)) return prev;
+        return [...prev, { id: Math.random().toString(), view, projectId, dateStr }];
+      });
+    } else {
+      setCurrentView(view);
+      setSelectedProjectId(projectId);
+      setSelectedPlannerDate(dateStr);
+      setAdditionalPanels([]);
+    }
+  }, [currentView, selectedProjectId, selectedPlannerDate]);
+
   const newTaskInputRef = useRef<HTMLInputElement>(null);
   const sidebarSearchRef = useRef<HTMLInputElement>(null);
 
   const weekDays = useMemo(() => getWeekDays(currentWeekOffset, startPlannerOnToday), [currentWeekOffset, startPlannerOnToday]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDays), [weekDays]);
 
-  const counts = useMemo(() => ({
-    inbox: tasks.filter((task) => task.status === 'inbox').length,
-    focus: tasks.filter((task) => task.isStarred && task.status !== 'completed').length,
-    today: tasks.filter((task) => task.dueDate === new Date().toISOString().slice(0, 10) && task.status !== 'completed').length,
-    next: tasks.filter((task) => task.status === 'next').length,
-    waiting: tasks.filter((task) => task.status === 'waiting').length,
-    scheduled: tasks.filter((task) => task.status === 'scheduled' || (task.status === 'completed' && task.dueDate)).length,
-    someday: tasks.filter((task) => task.status === 'someday').length,
-    completed: tasks.filter((task) => task.status === 'completed').length,
-  }), [tasks]);
+  const counts = useMemo(() => {
+    let activeTasks = tasks;
+    if (!settings.showCompletedTasks) {
+      activeTasks = activeTasks.filter(t => t.status !== 'completed');
+    }
+    return {
+      inbox: activeTasks.filter((task) => task.status === 'inbox').length,
+      focus: activeTasks.filter((task) => task.isStarred && task.status !== 'completed').length,
+      today: activeTasks.filter((task) => task.dueDate === new Date().toISOString().slice(0, 10) && task.status !== 'completed').length,
+      next: activeTasks.filter((task) => task.status === 'next').length,
+      waiting: activeTasks.filter((task) => task.status === 'waiting').length,
+      scheduled: activeTasks.filter((task) => task.status === 'scheduled' || (task.status === 'completed' && task.dueDate)).length,
+      someday: activeTasks.filter((task) => task.status === 'someday').length,
+      completed: tasks.filter((task) => task.status === 'completed').length,
+    };
+  }, [tasks, settings.showCompletedTasks]);
 
   const searchResults = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
     if (!normalized) return [];
 
-    return tasks.filter((task) => {
+    let activeTasks = tasks;
+    if (!settings.showCompletedTasks) {
+      activeTasks = activeTasks.filter(t => t.status !== 'completed');
+    }
+
+    return activeTasks.filter((task) => {
       const projectName = projects.find((project) => project.id === task.projectId)?.name || '';
       const haystack = [
         task.title,
@@ -132,38 +166,9 @@ export default function App() {
       ].join(' ').toLowerCase();
       return haystack.includes(normalized);
     });
-  }, [projects, searchQuery, tasks]);
+  }, [projects, searchQuery, tasks, settings.showCompletedTasks]);
 
-  const filteredTasks = useMemo(() => {
-    let result = tasks;
-    if (selectedArea) result = result.filter((task) => task.area === selectedArea);
-    if (currentView === 'focus') result = result.filter((task) => task.isStarred && task.status !== 'completed');
-    else if (currentView === 'today') result = result.filter((task) => task.dueDate === new Date().toISOString().slice(0, 10));
-    else if (currentView === 'day') result = result.filter((task) => task.dueDate === selectedPlannerDate);
-    else if (currentView === 'scheduled') result = result.filter((task) => task.status === 'scheduled' || (task.status === 'completed' && task.dueDate));
-    else if (currentView !== 'all' && currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search') {
-      result = result.filter((task) => task.status === currentView);
-    }
-    if (selectedProjectId) result = result.filter((task) => task.projectId === selectedProjectId);
-    return result;
-  }, [tasks, currentView, selectedPlannerDate, selectedProjectId, selectedArea]);
 
-  const matchedTaskIds = useMemo(() => new Set(filteredTasks.map((task) => task.id)), [filteredTasks]);
-
-  const taskListTasks = useMemo(() => {
-    if (settings.taskListMode !== 'outline') return filteredTasks;
-    const contextIds = collectTaskIdsWithAncestors(filteredTasks.map((task) => task.id), tasks);
-    return tasks.filter((task) => contextIds.has(task.id));
-  }, [filteredTasks, settings.taskListMode, tasks]);
-
-  const selectedPlannerDay = useMemo(() => {
-    if (!selectedPlannerDate) return null;
-    const date = new Date(`${selectedPlannerDate}T00:00:00`);
-    return {
-      title: date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
-      subtitle: date.toLocaleDateString('en-US', { year: 'numeric' }),
-    };
-  }, [selectedPlannerDate]);
 
   const projectTree = useMemo(() => {
     const byParent = new Map<string | null, typeof projects>();
@@ -186,26 +191,7 @@ export default function App() {
     return ordered;
   }, [projects]);
 
-  const headerTitle = useMemo(() => {
-    if (selectedProjectId) return projects.find((project) => project.id === selectedProjectId)?.name || 'Project';
-    if (currentView === 'day' && selectedPlannerDay) return `${selectedPlannerDay.title}, ${selectedPlannerDay.subtitle}`;
-    if (selectedArea) return selectedArea;
-    switch (currentView) {
-      case 'inbox': return 'Inbox';
-      case 'focus': return 'Focus';
-      case 'today': return 'Today';
-      case 'next': return 'Next';
-      case 'waiting': return 'Waiting';
-      case 'scheduled': return 'Scheduled';
-      case 'someday': return 'Someday';
-      case 'completed': return 'Completed';
-      case 'settings': return 'Settings';
-      case 'search': return 'Search';
-      case 'planner': return 'Planner';
-      case 'day': return 'Day';
-      default: return 'All Tasks';
-    }
-  }, [currentView, projects, selectedArea, selectedPlannerDay, selectedProjectId]);
+
 
   const handleAddNewTask = useCallback((event?: React.FormEvent) => {
     event?.preventDefault();
@@ -215,11 +201,11 @@ export default function App() {
   }, [addTask, newTaskTitle, selectedArea, selectedProjectId]);
 
   const commands = useMemo<CommandItem[]>(() => [
-    { id: 'goto-inbox', label: 'Go to Inbox', hint: 'Navigation', run: () => { setCurrentView('inbox'); setSelectedProjectId(null); } },
-    { id: 'goto-next', label: 'Go to Next', hint: 'Navigation', run: () => { setCurrentView('next'); setSelectedProjectId(null); } },
-    { id: 'goto-planner', label: 'Go to Planner', hint: 'Navigation', run: () => setCurrentView('planner') },
-    { id: 'goto-search', label: 'Open Search', hint: 'Navigation', run: () => { setCurrentView('search'); sidebarSearchRef.current?.focus(); } },
-    { id: 'goto-settings', label: 'Open Settings', hint: 'Navigation', run: () => setCurrentView('settings') },
+    { id: 'goto-inbox', label: 'Go to Inbox', hint: 'Navigation', run: () => handleViewSelect(undefined, 'inbox') },
+    { id: 'goto-next', label: 'Go to Next', hint: 'Navigation', run: () => handleViewSelect(undefined, 'next') },
+    { id: 'goto-planner', label: 'Go to Planner', hint: 'Navigation', run: () => handleViewSelect(undefined, 'planner') },
+    { id: 'goto-search', label: 'Open Search', hint: 'Navigation', run: () => { handleViewSelect(undefined, 'search'); sidebarSearchRef.current?.focus(); } },
+    { id: 'goto-settings', label: 'Open Settings', hint: 'Navigation', run: () => handleViewSelect(undefined, 'settings') },
     { id: 'new-task', label: 'Focus New Task Input', hint: 'Task', run: () => newTaskInputRef.current?.focus() },
     {
       id: 'toggle-theme', label: 'Cycle Theme', hint: 'Theme', run: () => {
@@ -256,7 +242,7 @@ export default function App() {
 
       if (event.key === '/') {
         event.preventDefault();
-        setCurrentView('search');
+        handleViewSelect(undefined, 'search');
         sidebarSearchRef.current?.focus();
         return;
       }
@@ -280,7 +266,7 @@ export default function App() {
           addTask('New Next Action', 'next', selectedArea || 'Personal');
           break;
         case '8':
-          setCurrentView('planner');
+          handleViewSelect(undefined, 'planner');
           break;
         case '1':
         case '2':
@@ -290,8 +276,7 @@ export default function App() {
         case '6':
         case '7': {
           const views: AppView[] = ['inbox', 'next', 'waiting', 'scheduled', 'someday', 'focus', 'completed'];
-          setCurrentView(views[Number.parseInt(key, 10) - 1]);
-          setSelectedProjectId(null);
+          handleViewSelect(undefined, views[Number.parseInt(key, 10) - 1]);
           break;
         }
         case '[':
@@ -404,10 +389,10 @@ export default function App() {
           <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
 
           <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
-            <button type="button" onClick={() => setCurrentView('planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Planner (8)">
+            <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Planner (8)">
               <Columns size={16} />
             </button>
-            <button type="button" onClick={() => { setCurrentView('next'); setSelectedProjectId(null); }} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View (1-7)">
+            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View (1-7)">
               <List size={16} />
             </button>
           </div>
@@ -435,6 +420,15 @@ export default function App() {
 
           <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
 
+          <button
+            type="button"
+            onClick={() => setShowCompletedTasks(!settings.showCompletedTasks)}
+            className={`flex h-[30px] w-[34px] items-center justify-center transition-colors hover:text-[var(--text-primary)] ${settings.showCompletedTasks ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}
+            title={settings.showCompletedTasks ? "Hide completed tasks" : "Show completed tasks"}
+          >
+            {settings.showCompletedTasks ? <Eye size={16} /> : <EyeOff size={16} />}
+          </button>
+
           <button type="button" onClick={() => setShowShortcutsModal(true)} className="flex h-[30px] w-[34px] items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]" title="Shortcuts (K)">
             <Keyboard size={18} />
           </button>
@@ -450,10 +444,10 @@ export default function App() {
                 ref={sidebarSearchRef}
                 type="text"
                 value={searchQuery}
-                onFocus={() => setCurrentView('search')}
+                onFocus={() => handleViewSelect(undefined, 'search')}
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
-                  setCurrentView('search');
+                  handleViewSelect(undefined, 'search');
                 }}
                 placeholder="Search tasks, notes, tags..."
                 className="w-full bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
@@ -461,14 +455,14 @@ export default function App() {
             </div>
           </div>
 
-          <SidebarItem icon={Star} label="Focus" count={counts.focus} active={currentView === 'focus'} onClick={() => { setCurrentView('focus'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { isStarred: true })} />
-          <SidebarItem icon={Calendar} label="Today" count={counts.today} active={currentView === 'today'} onClick={() => { setCurrentView('today'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { dueDate: new Date().toISOString().slice(0, 10), status: 'scheduled' })} />
+          <SidebarItem icon={Star} label="Focus" count={counts.focus} active={currentView === 'focus' || additionalPanels.some(p => p.view === 'focus')} onClick={(e) => handleViewSelect(e, 'focus')} onDrop={(id) => updateTask(id, { isStarred: true })} />
+          <SidebarItem icon={Calendar} label="Today" count={counts.today} active={currentView === 'today' || additionalPanels.some(p => p.view === 'today')} onClick={(e) => handleViewSelect(e, 'today')} onDrop={(id) => updateTask(id, { dueDate: new Date().toISOString().slice(0, 10), status: 'scheduled' })} />
           <div className="my-4 border-t soft-divider" />
-          <SidebarItem icon={Inbox} label="Inbox" count={counts.inbox} active={currentView === 'inbox'} onClick={() => { setCurrentView('inbox'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { status: 'inbox' })} />
-          <SidebarItem icon={ChevronsRight} label="Next" count={counts.next} active={currentView === 'next'} onClick={() => { setCurrentView('next'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { status: 'next' })} />
-          <SidebarItem icon={Clock} label="Waiting" count={counts.waiting} active={currentView === 'waiting'} onClick={() => { setCurrentView('waiting'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { status: 'waiting' })} />
-          <SidebarItem icon={Calendar} label="Scheduled" count={counts.scheduled} active={currentView === 'scheduled'} onClick={() => { setCurrentView('scheduled'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { status: 'scheduled' })} />
-          <SidebarItem icon={CloudRain} label="Someday" count={counts.someday} active={currentView === 'someday'} onClick={() => { setCurrentView('someday'); setSelectedProjectId(null); }} onDrop={(id) => updateTask(id, { status: 'someday' })} />
+          <SidebarItem icon={Inbox} label="Inbox" count={counts.inbox} active={currentView === 'inbox' || additionalPanels.some(p => p.view === 'inbox')} onClick={(e) => handleViewSelect(e, 'inbox')} onDrop={(id) => updateTask(id, { status: 'inbox' })} />
+          <SidebarItem icon={ChevronsRight} label="Next" count={counts.next} active={currentView === 'next' || additionalPanels.some(p => p.view === 'next')} onClick={(e) => handleViewSelect(e, 'next')} onDrop={(id) => updateTask(id, { status: 'next' })} />
+          <SidebarItem icon={Clock} label="Waiting" count={counts.waiting} active={currentView === 'waiting' || additionalPanels.some(p => p.view === 'waiting')} onClick={(e) => handleViewSelect(e, 'waiting')} onDrop={(id) => updateTask(id, { status: 'waiting' })} />
+          <SidebarItem icon={Calendar} label="Scheduled" count={counts.scheduled} active={currentView === 'scheduled' || additionalPanels.some(p => p.view === 'scheduled')} onClick={(e) => handleViewSelect(e, 'scheduled')} onDrop={(id) => updateTask(id, { status: 'scheduled' })} />
+          <SidebarItem icon={CloudRain} label="Someday" count={counts.someday} active={currentView === 'someday' || additionalPanels.some(p => p.view === 'someday')} onClick={(e) => handleViewSelect(e, 'someday')} onDrop={(id) => updateTask(id, { status: 'someday' })} />
 
           <div className="my-4">
             <div className="mb-2 flex items-center justify-between px-3">
@@ -485,8 +479,8 @@ export default function App() {
                   label={project.name}
                   iconColor={project.color}
                   indent={depth}
-                  active={selectedProjectId === project.id}
-                  onClick={() => { setSelectedProjectId(project.id); setCurrentView('all'); }}
+                  active={selectedProjectId === project.id || additionalPanels.some(p => p.projectId === project.id)}
+                  onClick={(e) => handleViewSelect(e, 'all', project.id)}
                   onDrop={(id) => updateTask(id, { projectId: project.id })}
                   actions={
                     <>
@@ -568,7 +562,7 @@ export default function App() {
           {currentView === 'planner' && (
             <PlannerView
               weekDays={weekDays}
-              tasks={tasks}
+              tasks={settings.showCompletedTasks ? tasks : tasks.filter(t => t.status !== 'completed')}
               projects={projects}
               widthMode={settings.plannerWidthMode}
               selectedArea={selectedArea}
@@ -612,39 +606,80 @@ export default function App() {
           )}
 
           {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
-            <TaskListView
-              tasks={taskListTasks}
-              allTasks={tasks}
-              projects={projects}
-              headerTitle={headerTitle}
-              currentView={currentView}
-              selectedArea={selectedArea}
-              selectedProjectId={selectedProjectId}
-              expandedTaskId={expandedTaskId}
-              itemCount={filteredTasks.length}
-              matchedTaskIds={matchedTaskIds}
-              taskListMode={settings.taskListMode}
-              backLabel={currentView === 'day' ? 'Back to week' : undefined}
-              onExpandTask={setExpandedTaskId}
-              onAddTask={(title) => addTask(title, currentView === 'day' ? 'scheduled' : (currentView === 'all' || currentView === 'focus' || currentView === 'planner') ? 'next' : currentView as TaskStatus, selectedArea || 'Personal', selectedProjectId, currentView === 'day' ? selectedPlannerDate : null)}
-              onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id)}
-              onTaskListModeChange={setTaskListMode}
-              onToggleStar={toggleStar}
-              onToggleComplete={toggleComplete}
-              onUpdateTask={updateTask}
-              onReorderTasks={reorderTasks}
-              onMoveTaskBefore={moveTaskBefore}
-              onMoveTaskAfter={moveTaskAfter}
-              onToggleTaskCollapsed={toggleTaskCollapsed}
-              onDeleteTask={deleteTask}
-              onOpenTask={setTaskToEditInModal}
-              onOpenDate={(dateStr) => {
-                setSelectedPlannerDate(dateStr);
-                setSelectedProjectId(null);
-                setCurrentView('day');
-              }}
-              onBack={currentView === 'day' ? () => setCurrentView('planner') : undefined}
-            />
+            <>
+              {additionalPanels.length === 0 ? (
+                <TaskPanelWrapper
+                  panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
+                  tasks={tasks}
+                  projects={projects}
+                  settings={settings}
+                  selectedArea={selectedArea}
+                  expandedTaskId={expandedTaskId}
+                  setExpandedTaskId={setExpandedTaskId}
+                  addTask={addTask}
+                  setTaskListMode={setTaskListMode}
+                  toggleStar={toggleStar}
+                  toggleComplete={toggleComplete}
+                  updateTask={updateTask}
+                  reorderTasks={reorderTasks}
+                  moveTaskBefore={moveTaskBefore}
+                  moveTaskAfter={moveTaskAfter}
+                  toggleTaskCollapsed={toggleTaskCollapsed}
+                  deleteTask={deleteTask}
+                  setTaskToEditInModal={setTaskToEditInModal}
+                  onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
+                  onBack={currentView === 'day' ? () => handleViewSelect(undefined, 'planner') : undefined}
+                  isSingle={true}
+                />
+              ) : (
+                <div className="flex w-full h-full gap-4 overflow-x-auto pb-4" style={{ paddingRight: '20px' }}>
+                  <TaskPanelWrapper
+                    panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
+                    tasks={tasks}
+                    projects={projects}
+                    settings={settings}
+                    selectedArea={selectedArea}
+                    expandedTaskId={expandedTaskId}
+                    setExpandedTaskId={setExpandedTaskId}
+                    addTask={addTask}
+                    setTaskListMode={setTaskListMode}
+                    toggleStar={toggleStar}
+                    toggleComplete={toggleComplete}
+                    updateTask={updateTask}
+                    reorderTasks={reorderTasks}
+                    moveTaskBefore={moveTaskBefore}
+                    moveTaskAfter={moveTaskAfter}
+                    toggleTaskCollapsed={toggleTaskCollapsed}
+                    deleteTask={deleteTask}
+                    setTaskToEditInModal={setTaskToEditInModal}
+                  />
+                  {additionalPanels.map((panel) => (
+                    <TaskPanelWrapper
+                      key={panel.id}
+                      panel={panel}
+                      tasks={tasks}
+                      projects={projects}
+                      settings={settings}
+                      selectedArea={selectedArea}
+                      expandedTaskId={expandedTaskId}
+                      setExpandedTaskId={setExpandedTaskId}
+                      addTask={addTask}
+                      setTaskListMode={setTaskListMode}
+                      toggleStar={toggleStar}
+                      toggleComplete={toggleComplete}
+                      updateTask={updateTask}
+                      reorderTasks={reorderTasks}
+                      moveTaskBefore={moveTaskBefore}
+                      moveTaskAfter={moveTaskAfter}
+                      toggleTaskCollapsed={toggleTaskCollapsed}
+                      deleteTask={deleteTask}
+                      setTaskToEditInModal={setTaskToEditInModal}
+                      onClose={() => setAdditionalPanels((prev) => prev.filter((p) => p.id !== panel.id))}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>

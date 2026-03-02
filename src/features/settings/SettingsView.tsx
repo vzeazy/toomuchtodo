@@ -126,10 +126,10 @@ export const SettingsView: React.FC<{
                 const parsed = JSON.parse(themeJson);
                 const result = validateThemeDefinition(parsed);
                 if (!result.valid) {
-                  setMessage(result.error);
+                  setMessage((result as any).error);
                   return;
                 }
-                onSaveTheme(result.theme);
+                onSaveTheme((result as any).theme);
                 setThemeJson('');
                 setMessage(`Saved theme "${result.theme.name}".`);
               } catch {

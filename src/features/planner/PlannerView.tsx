@@ -1,5 +1,5 @@
 import React from 'react';
-import { NotebookPen, Shrink, FolderMinus, CalendarDays, Sun, CloudSun, Cloud, CloudFog, CloudRain, Snowflake, CloudLightning } from 'lucide-react';
+import { AlignLeft, Shrink, FolderMinus, CalendarDays, Sun, CloudSun, Cloud, CloudFog, CloudRain, Snowflake, CloudLightning } from 'lucide-react';
 import { GhostItem } from '../../components/GhostItem';
 import { PlannerWidthMode, Project, Task } from '../../types';
 import { useWeather, WeatherCode } from '../../lib/useWeather';
@@ -136,7 +136,7 @@ export const PlannerView: React.FC<{
                     >
                       <div className="flex items-center gap-1.5">
                         <span className={`block flex-1 truncate ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
-                        {task.description.trim() && <NotebookPen size={12} className="shrink-0 text-[var(--text-muted)]" />}
+                        {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" />}
                       </div>
                     </button>
                     <PlannerDropZone

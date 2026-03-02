@@ -61,6 +61,7 @@ export interface AppSettings {
   activeThemeId: string;
   plannerWidthMode: PlannerWidthMode;
   taskListMode: TaskListMode;
+  showCompletedTasks: boolean;
 }
 
 export interface AppStateData {
