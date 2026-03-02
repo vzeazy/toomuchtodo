@@ -68,7 +68,7 @@ export const OutlineTaskRow: React.FC<{
   canNestTask,
   onAddSubtask,
 }) => {
-    const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
+    const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
     const [isOver, setIsOver] = useState(false);
     const [dropMode, setDropMode] = useState<'before' | 'inside' | 'after'>('inside');
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -173,10 +173,10 @@ export const OutlineTaskRow: React.FC<{
     };
     const subtasks = allTasks.filter((item) => item.parentId === task.id);
     const dropModeLabel = dropMode === 'before'
-      ? 'Insert sibling above'
+      ? '↑ Insert above'
       : dropMode === 'after'
-        ? 'Insert sibling below'
-        : 'Nest under task';
+        ? '↓ Insert below'
+        : '→ Nest under';
 
     const handleDragStart = (event: React.DragEvent) => {
       event.dataTransfer.setData('taskId', task.id);
@@ -195,13 +195,16 @@ export const OutlineTaskRow: React.FC<{
           if (!hasTaskDragPayload(event.dataTransfer)) return;
           const rect = event.currentTarget.getBoundingClientRect();
           const offsetY = event.clientY - rect.top;
-          const nextMode = offsetY < rect.height * 0.28 ? 'before' : offsetY > rect.height * 0.72 ? 'after' : 'inside';
+          const nextMode = offsetY < rect.height * 0.25 ? 'before' : offsetY > rect.height * 0.75 ? 'after' : 'inside';
           setDropMode(nextMode);
           setIsOver(true);
         }}
-        onDragLeave={() => {
-          setIsOver(false);
-          setDropMode('inside');
+        onDragLeave={(event) => {
+          // Only clear when leaving the actual row boundary, not a child element
+          if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+            setIsOver(false);
+            setDropMode('inside');
+          }
         }}
         onDrop={(event) => {
           event.preventDefault();
@@ -215,16 +218,32 @@ export const OutlineTaskRow: React.FC<{
           }
           setDropMode('inside');
         }}
-        className={`group relative rounded-2xl transition-colors outline-none hover:bg-[rgba(255,255,255,0.018)] focus:bg-[rgba(255,255,255,0.025)] ${isContextAncestor ? 'opacity-75' : ''} ${isOver ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/60' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
+        className={`group relative rounded-2xl transition-all outline-none hover:bg-[rgba(255,255,255,0.018)] focus:bg-[rgba(255,255,255,0.025)] ${isContextAncestor ? 'opacity-75' : ''} ${isOver && dropMode === 'inside' ? 'bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/50' : isOver ? 'bg-[rgba(255,255,255,0.03)]' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
       >
+        {/* drop intent label */}
         {isOver && (
-          <div className="pointer-events-none absolute right-2 top-1 z-30 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+          <div className="pointer-events-none absolute right-2 top-1/2 z-30 -translate-y-1/2 rounded-full bg-[var(--accent)] px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-lg">
             {dropModeLabel}
           </div>
         )}
-        {isOver && dropMode === 'inside' && <div className="pointer-events-none absolute left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded bg-[var(--accent)]/80" />}
-        {isOver && dropMode === 'before' && <div className="absolute inset-x-1 top-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
-        {isOver && dropMode === 'after' && <div className="absolute inset-x-1 bottom-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
+        {/* insert-above line with depth dot */}
+        {isOver && dropMode === 'before' && (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-[3px] rounded-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px` }} />
+            <div className="pointer-events-none absolute top-[-4px] z-20 h-[10px] w-[10px] -translate-y-0 rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel-bg)]" style={{ left: `${16 + depth * 24}px` }} />
+          </>
+        )}
+        {/* insert-after line with depth dot */}
+        {isOver && dropMode === 'after' && (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[3px] rounded-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px` }} />
+            <div className="pointer-events-none absolute bottom-[-4px] z-20 h-[10px] w-[10px] rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel-bg)]" style={{ left: `${16 + depth * 24}px` }} />
+          </>
+        )}
+        {/* nest-under: left-edge accent bar */}
+        {isOver && dropMode === 'inside' && (
+          <div className="pointer-events-none absolute bottom-1 top-1 z-20 w-[3px] rounded-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24 - 2}px` }} />
+        )}
         <div className="relative flex items-center gap-2 px-4 py-2" style={{ paddingLeft: `${16 + (depth * 24)}px` }}>
           <div className="absolute top-1/2 -translate-y-1/2 cursor-grab text-[var(--text-muted)]" style={{ left: `${depth * 24 - 10}px` }}>
             <GripVertical size={12} className="opacity-0 transition-opacity group-hover:opacity-100" />
@@ -269,7 +288,7 @@ export const OutlineTaskRow: React.FC<{
                       setIsEditingTitle(false);
                     }
                   }}
-                  className="w-full rounded bg-transparent text-[13px] tracking-[-0.01em] text-[var(--text-primary)] outline-none ring-1 ring-[var(--focus)]"
+                  className="w-full bg-transparent p-0 text-[13px] tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0"
                 />
               ) : (
                 <span

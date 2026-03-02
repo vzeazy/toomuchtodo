@@ -12,7 +12,8 @@ export const SidebarItem: React.FC<{
   indent?: number;
   actions?: React.ReactNode;
 }> = ({ icon: Icon, label, count, active, onClick, onDrop, className = '', iconColor, indent = 0, actions }) => {
-  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
+  // HTML5 drag API lowercases all type keys in dataTransfer.types
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
   const [isOver, setIsOver] = React.useState(false);
 
   return (
@@ -23,7 +24,11 @@ export const SidebarItem: React.FC<{
         event.preventDefault();
         setIsOver(true);
       }}
-      onDragLeave={() => setIsOver(false)}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setIsOver(false);
+        }
+      }}
       onDrop={(event) => {
         if (!hasTaskDragPayload(event.dataTransfer)) return;
         event.preventDefault();

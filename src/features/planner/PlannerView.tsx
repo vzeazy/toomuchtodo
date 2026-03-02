@@ -42,7 +42,7 @@ export const PlannerView: React.FC<{
   onToggleCompactEmptyDays: () => void;
   onToggleStartOnToday: () => void;
 }> = ({ weekDays, tasks, projects, widthMode, selectedArea, hideEmptyProjects, compactEmptyDays, startOnToday, onUpdateTask, onMoveTaskBefore, onMoveTaskAfter, onToggleComplete, onAddTask, onAddProjectTask, onOpenTask, onOpenProject, onOpenDay, onToggleHideEmptyProjects, onToggleCompactEmptyDays, onToggleStartOnToday }) => {
-  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
   const weather = useWeather();
   const [dragOverDay, setDragOverDay] = React.useState<string | null>(null);
   const [dragOverProject, setDragOverProject] = React.useState<string | null>(null);
@@ -98,7 +98,11 @@ export const PlannerView: React.FC<{
               key={day.dateStr}
               className={`relative flex flex-col px-3 py-2 transition-all ${compactEmptyDays && isEmpty ? 'min-h-[180px] opacity-55' : 'min-h-[360px]'} ${day.isToday ? 'bg-[rgba(255,255,255,0.02)] rounded-2xl' : ''} ${dragOverDay === day.dateStr ? 'rounded-2xl bg-[rgba(255,255,255,0.05)] ring-1 ring-[var(--accent)]/65' : ''}`}
               onDragEnter={() => setDragOverDay(day.dateStr)}
-              onDragLeave={() => setDragOverDay((value) => value === day.dateStr ? null : value)}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setDragOverDay((value) => value === day.dateStr ? null : value);
+                }
+              }}
               onDragOver={(event) => {
                 if (!hasTaskDragPayload(event.dataTransfer)) return;
                 event.preventDefault();
@@ -195,7 +199,11 @@ export const PlannerView: React.FC<{
               key={project.id}
               className={`relative rounded-2xl px-2 py-2 transition-all ${dragOverProject === project.id ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/65' : ''}`}
               onDragEnter={() => setDragOverProject(project.id)}
-              onDragLeave={() => setDragOverProject((value) => value === project.id ? null : value)}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setDragOverProject((value) => value === project.id ? null : value);
+                }
+              }}
               onDragOver={(event) => {
                 if (!hasTaskDragPayload(event.dataTransfer)) return;
                 event.preventDefault();
@@ -239,14 +247,18 @@ const PlannerDropZone: React.FC<{
   label: string;
   onDropTask: (id: string) => void;
 }> = ({ label, onDropTask }) => {
-  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
   const [isDragOver, setIsDragOver] = React.useState(false);
 
   return (
     <div
       className="relative h-4"
       onDragEnter={() => setIsDragOver(true)}
-      onDragLeave={() => setIsDragOver(false)}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setIsDragOver(false);
+        }
+      }}
       onDragOver={(event) => {
         if (!hasTaskDragPayload(event.dataTransfer)) return;
         event.preventDefault();
@@ -258,7 +270,7 @@ const PlannerDropZone: React.FC<{
         const id = event.dataTransfer.getData('taskId');
         if (id) onDropTask(id);
       }}
-      >
+    >
       <div className={`absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 transition-colors ${isDragOver ? 'bg-[var(--accent)]/90' : 'bg-transparent'}`} />
       {isDragOver && (
         <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
@@ -352,7 +364,7 @@ const PlannerTaskRow: React.FC<{
               setIsEditingTitle(false);
             }
           }}
-          className="w-full rounded bg-transparent text-[12.5px] text-[var(--text-primary)] outline-none ring-1 ring-[var(--focus)]"
+          className="w-full bg-transparent p-0 text-[12.5px] text-[var(--text-primary)] outline-none border-none focus:ring-0"
         />
       ) : (
         <span className={`truncate text-[12.5px] ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>

@@ -20,7 +20,8 @@ export const TaskRow: React.FC<{
   canNestTask: (sourceId: string, targetId: string) => boolean;
   onAddSubtask: (parentTask: Task, title: string) => void;
 }> = ({ task, allTasks, projects, childCount = 0, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
-  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
+  // HTML5 drag API lowercases all type keys in dataTransfer.types
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
   const [showMenu, setShowMenu] = useState(false);
   const [isOver, setIsOver] = useState(false);
   const [dropMode, setDropMode] = useState<'before' | 'inside' | 'after'>('inside');
@@ -137,9 +138,11 @@ export const TaskRow: React.FC<{
         setDropMode(nextMode);
         setIsOver(true);
       }}
-      onDragLeave={() => {
-        setIsOver(false);
-        setDropMode('inside');
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setIsOver(false);
+          setDropMode('inside');
+        }
       }}
       onDrop={(event) => {
         event.preventDefault();
@@ -153,16 +156,32 @@ export const TaskRow: React.FC<{
         }
         setDropMode('inside');
       }}
-      className={`group relative flex flex-col rounded-xl transition-colors hover:bg-[rgba(255,255,255,0.015)] ${isOver ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/60' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
+      className={`group relative flex flex-col rounded-xl transition-all hover:bg-[rgba(255,255,255,0.015)] ${isOver && dropMode === 'inside' ? 'bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/50' : isOver ? 'bg-[rgba(255,255,255,0.03)]' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
     >
+      {/* drop intent label */}
       {isOver && (
-        <div className="pointer-events-none absolute right-2 top-1 z-30 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+        <div className="pointer-events-none absolute right-2 top-1/2 z-30 -translate-y-1/2 rounded-full bg-[var(--accent)] px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-lg">
           {dropModeLabel}
         </div>
       )}
-      {isOver && dropMode === 'inside' && <div className="pointer-events-none absolute left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded bg-[var(--accent)]/80" />}
-      {isOver && dropMode === 'before' && <div className="absolute inset-x-1 top-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
-      {isOver && dropMode === 'after' && <div className="absolute inset-x-1 bottom-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
+      {/* insert-above line */}
+      {isOver && dropMode === 'before' && (
+        <>
+          <div className="pointer-events-none absolute inset-x-2 top-0 z-20 h-[3px] rounded-full bg-[var(--accent)]" />
+          <div className="pointer-events-none absolute left-2 top-[-4px] z-20 h-[10px] w-[10px] rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel-bg)]" />
+        </>
+      )}
+      {/* insert-after line */}
+      {isOver && dropMode === 'after' && (
+        <>
+          <div className="pointer-events-none absolute inset-x-2 bottom-0 z-20 h-[3px] rounded-full bg-[var(--accent)]" />
+          <div className="pointer-events-none absolute bottom-[-4px] left-2 z-20 h-[10px] w-[10px] rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel-bg)]" />
+        </>
+      )}
+      {/* nest: left accent bar */}
+      {isOver && dropMode === 'inside' && (
+        <div className="pointer-events-none absolute bottom-1 left-0 top-1 z-20 w-[3px] rounded-full bg-[var(--accent)]" />
+      )}
       <div
         className="relative flex cursor-pointer items-center gap-4 py-3 pl-0 pr-4"
         onClick={handleRowClick}
@@ -193,7 +212,7 @@ export const TaskRow: React.FC<{
                     setIsEditingTitle(false);
                   }
                 }}
-                className="w-full rounded bg-transparent text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)] outline-none ring-1 ring-[var(--focus)]"
+                className="w-full bg-transparent p-0 text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0"
               />
             ) : (
               <span
