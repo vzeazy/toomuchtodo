@@ -31,7 +31,7 @@ import {
 import { SidebarItem } from '../components/SidebarItem';
 import { ShortcutsModal } from '../components/ShortcutsModal';
 import { copyTextToClipboard } from '../lib/clipboard';
-import { getWeekDays, getWeekRangeLabel } from '../lib/date';
+import { formatDateKey, getWeekDays, getWeekRangeLabel } from '../lib/date';
 import {
   createTaskListExchangePayload,
   createTaskListMarkdown,
@@ -140,6 +140,20 @@ export default function App() {
 
   const weekDays = useMemo(() => getWeekDays(currentWeekOffset, settings.startPlannerOnToday), [currentWeekOffset, settings.startPlannerOnToday]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDays), [weekDays]);
+  const selectedDayLabel = useMemo(() => {
+    if (currentView !== 'day' || !selectedPlannerDate) return null;
+    const date = new Date(`${selectedPlannerDate}T00:00:00`);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }, [currentView, selectedPlannerDate]);
+
+  const shiftSelectedDay = useCallback((delta: number) => {
+    setSelectedPlannerDate((prev) => {
+      const base = prev ? new Date(`${prev}T00:00:00`) : new Date();
+      base.setHours(0, 0, 0, 0);
+      base.setDate(base.getDate() + delta);
+      return formatDateKey(base);
+    });
+  }, []);
 
   const counts = useMemo(() => {
     let activeTasks = tasks;
@@ -352,10 +366,26 @@ export default function App() {
             <div className="section-kicker text-[10px] font-medium uppercase text-[var(--text-muted)]">Focus System</div>
           </div>
           <div className="ml-4 flex items-center gap-2 text-[var(--text-muted)]">
-            <ChevronLeft className={`cursor-pointer ${currentView === 'planner' ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`} size={14} onClick={() => currentView === 'planner' && currentWeekOffset > -100 && setCurrentWeekOffset((value) => value - 1)} />
-            <ChevronRight className={`cursor-pointer ${currentView === 'planner' ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`} size={14} onClick={() => currentView === 'planner' && currentWeekOffset < 100 && setCurrentWeekOffset((value) => value + 1)} />
+            <ChevronLeft
+              className={`cursor-pointer ${(currentView === 'planner' || currentView === 'day') ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`}
+              size={14}
+              onClick={() => {
+                if (currentView === 'planner' && currentWeekOffset > -100) setCurrentWeekOffset((value) => value - 1);
+                else if (currentView === 'day') shiftSelectedDay(-1);
+              }}
+            />
+            <ChevronRight
+              className={`cursor-pointer ${(currentView === 'planner' || currentView === 'day') ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`}
+              size={14}
+              onClick={() => {
+                if (currentView === 'planner' && currentWeekOffset < 100) setCurrentWeekOffset((value) => value + 1);
+                else if (currentView === 'day') shiftSelectedDay(1);
+              }}
+            />
             {currentWeekOffset !== 0 && currentView === 'planner' && <button type="button" onClick={() => setCurrentWeekOffset(0)} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
+            {currentView === 'day' && <button type="button" onClick={() => setSelectedPlannerDate(formatDateKey(new Date()))} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
             {currentView === 'planner' && <span className="ml-3 px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">{weekRangeLabel}</span>}
+            {currentView === 'day' && selectedDayLabel && <span className="ml-3 px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">{selectedDayLabel}</span>}
           </div>
           <div className="relative ml-4">
             <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex items-center gap-1 rounded-full border soft-divider px-3 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]">

@@ -73,6 +73,7 @@ export const TaskListView: React.FC<{
       });
     }, [tasks]);
     const topLevelListTasks = useMemo(() => listTasks.filter((task) => !task.parentId), [listTasks]);
+    const visibleListTasks = useMemo(() => currentView === 'day' ? listTasks : topLevelListTasks, [currentView, listTasks, topLevelListTasks]);
 
     const childCounts = useMemo(() => {
       const counts = new Map<string, number>();
@@ -254,7 +255,7 @@ export const TaskListView: React.FC<{
             <div>
               <h1 className="text-[26px] font-medium leading-[1.05] tracking-[-0.03em] text-[var(--text-primary)]">{headerTitle}</h1>
               <div className="mt-2 text-[11px] font-medium text-[var(--text-muted)]">
-                {(taskListMode === 'list' ? topLevelListTasks.length : itemCount)} items
+                {(taskListMode === 'list' ? visibleListTasks.length : itemCount)} items
                 {selectedArea && <span className="ml-3">Area: {selectedArea}</span>}
                 {selectedProjectId && <span className="ml-3">Project scoped</span>}
               </div>
@@ -404,7 +405,7 @@ export const TaskListView: React.FC<{
             </>
           ) : (
             <>
-              {topLevelListTasks.map((task) => (
+              {visibleListTasks.map((task) => (
                 <TaskRow
                   key={task.id}
                   task={task}

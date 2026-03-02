@@ -16,8 +16,8 @@ import {
 } from '../types';
 
 const STORAGE_KEY = 'too_much_to_do_state_v1';
-const LEGACY_TASKS_KEY = 'nirvana_tasks';
-const LEGACY_PROJECTS_KEY = 'nirvana_projects';
+const LEGACY_TASKS_KEY = 'too_much_to_do_legacy_tasks';
+const LEGACY_PROJECTS_KEY = 'too_much_to_do_legacy_projects';
 const CURRENT_VERSION = 1;
 
 const INITIAL_PROJECTS: Project[] = [
