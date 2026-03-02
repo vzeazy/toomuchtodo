@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Copy, Download, Palette, Settings2, Upload } from 'lucide-react';
+import { copyTextToClipboard } from '../../lib/clipboard';
 import { getTaskListGenerationPrompt, isTaskListExchange } from '../../lib/taskListExchange';
 import { getThemePrompt, validateThemeDefinition } from '../../lib/theme';
 import { AppDataExport, Project, TaskListExchange, TaskListImportMode, TaskListScope, ThemeDefinition } from '../../types';
@@ -14,7 +15,7 @@ export const SettingsView: React.FC<{
   onExportTaskListJson: (scope: TaskListScope) => void;
   onImportTaskListJson: (payload: TaskListExchange, mode: TaskListImportMode) => void;
   onExportTaskListMarkdown: (scope: TaskListScope) => void;
-  onCopyTaskListProgressPrompt: (scope: TaskListScope) => Promise<void>;
+  onCopyTaskListProgressPrompt: (scope: TaskListScope) => Promise<boolean>;
   onSaveTheme: (theme: ThemeDefinition) => void;
 }> = ({
   projects,
@@ -161,8 +162,8 @@ export const SettingsView: React.FC<{
             <button
               type="button"
               onClick={async () => {
-                await navigator.clipboard.writeText(roundtripPromptText);
-                setMessage('Task-list generation prompt copied to clipboard. Paste it into your LLM.');
+                const copied = await copyTextToClipboard(roundtripPromptText);
+                setMessage(copied ? 'Task-list generation prompt copied to clipboard. Paste it into your LLM.' : 'Copy failed. Please copy from the prompt preview.');
               }}
               className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
             >
@@ -291,8 +292,8 @@ export const SettingsView: React.FC<{
                 disabled={!canUseProjectScope}
                 onClick={async () => {
                   if (!canUseProjectScope) return;
-                  await onCopyTaskListProgressPrompt(selectedScope);
-                  setMessage('Task list progress prompt copied to clipboard.');
+                  const copied = await onCopyTaskListProgressPrompt(selectedScope);
+                  setMessage(copied ? 'Task list progress prompt copied to clipboard.' : 'Copy failed. Please copy from the exported prompt text.');
                 }}
                 className="rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-4 text-left transition-colors hover:border-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -367,14 +368,14 @@ export const SettingsView: React.FC<{
             <div className="rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">Generated prompt</h3>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(promptText);
-                    setMessage('Theme generation prompt copied to clipboard.');
-                  }}
-                  className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)]"
-                >
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const copied = await copyTextToClipboard(promptText);
+                      setMessage(copied ? 'Theme generation prompt copied to clipboard.' : 'Copy failed. Please copy from the prompt preview.');
+                    }}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)]"
+                  >
                   <Copy size={12} /> Copy prompt
                 </button>
               </div>

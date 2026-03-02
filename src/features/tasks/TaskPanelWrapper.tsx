@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Project, Task, TaskListMode, AppView } from '../../types';
 import { TaskListView } from './TaskListView';
-import { collectTaskIdsWithAncestors } from './taskTree';
+import { collectTaskIdsWithAncestors, getTaskDescendantIds } from './taskTree';
 
 export interface PanelState {
   id: string;
@@ -78,7 +78,13 @@ export const TaskPanelWrapper: React.FC<{
 
     const taskListTasks = useMemo(() => {
       if (settings.taskListMode !== 'outline') return filteredTasks;
-      const contextIds = collectTaskIdsWithAncestors(filteredTasks.map((task) => task.id), tasks);
+      const matchedIds = filteredTasks.map((task) => task.id);
+      const contextIds = collectTaskIdsWithAncestors(matchedIds, tasks);
+      for (const taskId of matchedIds) {
+        for (const descendantId of getTaskDescendantIds(taskId, tasks)) {
+          contextIds.add(descendantId);
+        }
+      }
       return tasks.filter((task) => contextIds.has(task.id));
     }, [filteredTasks, settings.taskListMode, tasks]);
 

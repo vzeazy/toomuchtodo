@@ -115,6 +115,20 @@ Nuances:
 - Advanced tooling remains available but intentionally secondary.
 - Build verified after simplification: `npm run build` (pass).
 
+### 2026-03-02 - Clipboard reliability hardened for dev mode
+
+- Added `copyTextToClipboard` helper in `src/lib/clipboard.ts`.
+- Copy flow now tries `navigator.clipboard.writeText(...)` first, then falls back to `document.execCommand('copy')`.
+- Wired fallback usage in:
+  - task-list prompt copy in settings
+  - theme prompt copy in settings
+  - progress prompt copy path from app/settings integration
+
+Nuance:
+
+- This ensures copy actions still work in less permissive environments (including common local dev contexts).
+- Build verified: `npm run build` (pass).
+
 ---
 
 ## What exists today (codebase findings)

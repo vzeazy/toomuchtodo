@@ -95,10 +95,13 @@ export const PlannerView: React.FC<{
           return (
             <div
               key={day.dateStr}
-              className={`flex flex-col px-3 py-2 transition-all ${compactEmptyDays && isEmpty ? 'min-h-[180px] opacity-55' : 'min-h-[360px]'} ${day.isToday ? 'bg-[rgba(255,255,255,0.02)] rounded-2xl' : ''} ${dragOverDay === day.dateStr ? 'rounded-2xl bg-[rgba(255,255,255,0.025)]' : ''}`}
+              className={`relative flex flex-col px-3 py-2 transition-all ${compactEmptyDays && isEmpty ? 'min-h-[180px] opacity-55' : 'min-h-[360px]'} ${day.isToday ? 'bg-[rgba(255,255,255,0.02)] rounded-2xl' : ''} ${dragOverDay === day.dateStr ? 'rounded-2xl bg-[rgba(255,255,255,0.05)] ring-1 ring-[var(--accent)]/65' : ''}`}
               onDragEnter={() => setDragOverDay(day.dateStr)}
               onDragLeave={() => setDragOverDay((value) => value === day.dateStr ? null : value)}
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(event) => {
+                if (event.dataTransfer.getData('context') !== 'reorder') return;
+                event.preventDefault();
+              }}
               onDrop={(event) => {
                 setDragOverDay(null);
                 if (dayTasks.length > 0) return;
@@ -106,6 +109,11 @@ export const PlannerView: React.FC<{
                 if (id) onUpdateTask(id, { dueDate: day.dateStr, status: 'scheduled' });
               }}
             >
+              {dragOverDay === day.dateStr && (
+                <div className="pointer-events-none absolute right-3 top-3 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                  {dayTasks.length > 0 ? 'Use insert lines' : `Schedule for ${day.dayName}`}
+                </div>
+              )}
               <div className="mb-3 pb-2">
                 <div className={`mb-1 text-[10px] font-medium ${day.isToday ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>{day.dayNum} {day.month}</div>
                 <div className="flex items-center gap-2">
@@ -123,6 +131,7 @@ export const PlannerView: React.FC<{
               <div className="flex-1 space-y-0.5">
                 {dayTasks.length > 0 && (
                   <PlannerDropZone
+                    label="Insert at top"
                     onDropTask={(id) => {
                       onMoveTaskBefore(id, dayTasks[0].id);
                       onUpdateTask(id, { dueDate: day.dateStr, status: 'scheduled' });
@@ -140,6 +149,7 @@ export const PlannerView: React.FC<{
                       onToggleComplete={onToggleComplete}
                     />
                     <PlannerDropZone
+                      label={index === dayTasks.length - 1 ? 'Insert at bottom' : 'Insert here'}
                       onDropTask={(id) => {
                         if (index === dayTasks.length - 1) onMoveTaskAfter(id, task.id);
                         else onMoveTaskBefore(id, dayTasks[index + 1].id);
@@ -182,16 +192,24 @@ export const PlannerView: React.FC<{
           {visibleProjects.map((project) => (
             <div
               key={project.id}
-              className="px-2 py-2"
+              className={`relative rounded-2xl px-2 py-2 transition-all ${dragOverProject === project.id ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/65' : ''}`}
               onDragEnter={() => setDragOverProject(project.id)}
               onDragLeave={() => setDragOverProject((value) => value === project.id ? null : value)}
-              onDragOver={(event) => event.preventDefault()}
+              onDragOver={(event) => {
+                if (event.dataTransfer.getData('context') !== 'reorder') return;
+                event.preventDefault();
+              }}
               onDrop={(event) => {
                 setDragOverProject(null);
                 const id = event.dataTransfer.getData('taskId');
                 if (id) onUpdateTask(id, { projectId: project.id });
               }}
             >
+              {dragOverProject === project.id && (
+                <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                  Move to project
+                </div>
+              )}
               <button type="button" className={`mb-3 truncate text-left text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-primary)] ${dragOverProject === project.id ? 'opacity-90' : ''}`} onClick={() => onOpenProject(project.id)}>
                 {project.name}
               </button>
@@ -217,16 +235,18 @@ export const PlannerView: React.FC<{
 };
 
 const PlannerDropZone: React.FC<{
+  label: string;
   onDropTask: (id: string) => void;
-}> = ({ onDropTask }) => {
+}> = ({ label, onDropTask }) => {
   const [isDragOver, setIsDragOver] = React.useState(false);
 
   return (
     <div
-      className="relative h-2"
+      className="relative h-4"
       onDragEnter={() => setIsDragOver(true)}
       onDragLeave={() => setIsDragOver(false)}
       onDragOver={(event) => {
+        if (event.dataTransfer.getData('context') !== 'reorder') return;
         event.preventDefault();
         setIsDragOver(true);
       }}
@@ -236,8 +256,13 @@ const PlannerDropZone: React.FC<{
         const id = event.dataTransfer.getData('taskId');
         if (id) onDropTask(id);
       }}
-    >
-      <div className={`absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors ${isDragOver ? 'bg-[var(--accent)]/80' : 'bg-transparent'}`} />
+      >
+      <div className={`absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 transition-colors ${isDragOver ? 'bg-[var(--accent)]/90' : 'bg-transparent'}`} />
+      {isDragOver && (
+        <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+          {label}
+        </div>
+      )}
     </div>
   );
 };

@@ -117,6 +117,11 @@ export const TaskRow: React.FC<{
   };
 
   const subtasks = allTasks.filter((item) => item.parentId === task.id);
+  const dropModeLabel = dropMode === 'before'
+    ? 'Insert above'
+    : dropMode === 'after'
+      ? 'Insert below'
+      : 'Make subtask';
 
   return (
     <div
@@ -148,11 +153,16 @@ export const TaskRow: React.FC<{
         }
         setDropMode('inside');
       }}
-      className={`group relative flex flex-col rounded-xl transition-colors hover:bg-[rgba(255,255,255,0.015)] ${isOver && dropMode === 'inside' ? 'bg-[rgba(255,255,255,0.035)]' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
+      className={`group relative flex flex-col rounded-xl transition-colors hover:bg-[rgba(255,255,255,0.015)] ${isOver ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/60' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
     >
-      {isOver && dropMode === 'inside' && <div className="pointer-events-none absolute left-1 top-1/2 h-3 w-0.5 -translate-y-1/2 rounded bg-[var(--accent)]/70" />}
-      {isOver && dropMode === 'before' && <div className="absolute inset-x-1 top-0 z-20 h-px bg-[var(--accent)]/80" />}
-      {isOver && dropMode === 'after' && <div className="absolute inset-x-1 bottom-0 z-20 h-px bg-[var(--accent)]/80" />}
+      {isOver && (
+        <div className="pointer-events-none absolute right-2 top-1 z-30 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+          {dropModeLabel}
+        </div>
+      )}
+      {isOver && dropMode === 'inside' && <div className="pointer-events-none absolute left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded bg-[var(--accent)]/80" />}
+      {isOver && dropMode === 'before' && <div className="absolute inset-x-1 top-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
+      {isOver && dropMode === 'after' && <div className="absolute inset-x-1 bottom-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
       <div
         className="relative flex cursor-pointer items-center gap-3 pl-0 pr-5 py-2.5"
         onClick={handleRowClick}

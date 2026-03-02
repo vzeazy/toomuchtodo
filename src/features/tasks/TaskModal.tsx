@@ -28,6 +28,7 @@ export const TaskModal: React.FC<{
   const [isEditingNotes, setIsEditingNotes] = useState(!task.description.trim());
   const [isNotesExpanded, setIsNotesExpanded] = useState(false);
   const [dragTarget, setDragTarget] = useState<string | null>(null);
+  const [isDraggingSubtask, setIsDraggingSubtask] = useState(false);
 
   const tagValue = useMemo(() => task.tags.join(', '), [task.tags]);
   const subtasks = useMemo(() => tasks.filter((t) => t.parentId === task.id), [tasks, task.id]);
@@ -42,7 +43,19 @@ export const TaskModal: React.FC<{
     setIsEditingNotes(!task.description.trim());
     setIsNotesExpanded(false);
     setDragTarget(null);
+    setIsDraggingSubtask(false);
   }, [task.id, task.description]);
+
+  useEffect(() => {
+    if (!isDraggingSubtask) return;
+    const handleDragEnd = () => setIsDraggingSubtask(false);
+    window.addEventListener('dragend', handleDragEnd);
+    window.addEventListener('drop', handleDragEnd);
+    return () => {
+      window.removeEventListener('dragend', handleDragEnd);
+      window.removeEventListener('drop', handleDragEnd);
+    };
+  }, [isDraggingSubtask]);
 
   const commitSubtask = (keepOpen = false) => {
     const nextTitle = draftSubtaskTitle.trim();
@@ -62,8 +75,14 @@ export const TaskModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-[2100] flex justify-end bg-[var(--overlay)] backdrop-blur-[2px] transition-opacity" onClick={onClose}>
-      <div className="panel-surface flex h-full w-full max-w-[500px] flex-col shadow-[-10px_0_40px_rgba(0,0,0,0.1)] border-l soft-divider animate-in slide-in-from-right duration-200" onClick={(event) => event.stopPropagation()}>
+    <div
+      className={`fixed inset-0 z-[2100] flex justify-end transition-opacity ${isDraggingSubtask ? 'bg-transparent backdrop-blur-0 pointer-events-none' : 'bg-[var(--overlay)] backdrop-blur-[2px]'}`}
+      onClick={onClose}
+    >
+      <div
+        className="panel-surface flex h-full w-full max-w-[500px] flex-col shadow-[-10px_0_40px_rgba(0,0,0,0.1)] border-l soft-divider animate-in slide-in-from-right duration-200 pointer-events-auto"
+        onClick={(event) => event.stopPropagation()}
+      >
 
         {/* Header - Seamless */}
         <div className="flex shrink-0 items-center justify-between px-8 pb-4 pt-7">
@@ -166,10 +185,13 @@ export const TaskModal: React.FC<{
                       onDragStart={(event) => {
                         event.dataTransfer.setData('taskId', subtask.id);
                         event.dataTransfer.setData('context', 'reorder');
+                        setIsDraggingSubtask(true);
                       }}
+                      onDragEnd={() => setIsDraggingSubtask(false)}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={(event) => {
                         event.preventDefault();
+                        setIsDraggingSubtask(false);
                         const sourceId = event.dataTransfer.getData('taskId');
                         if (!sourceId || sourceId === subtask.id) return;
                         onMoveTaskAfter(sourceId, subtask.id, task.id);

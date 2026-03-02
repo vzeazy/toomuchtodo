@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { SidebarItem } from '../components/SidebarItem';
 import { ShortcutsModal } from '../components/ShortcutsModal';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { getWeekDays, getWeekRangeLabel } from '../lib/date';
 import {
   createTaskListExchangePayload,
@@ -660,7 +661,7 @@ export default function App() {
               }}
               onCopyTaskListProgressPrompt={async (scope: TaskListScope) => {
                 const prompt = createTaskListProgressPrompt(tasks, projects, scope);
-                await navigator.clipboard.writeText(prompt);
+                return copyTextToClipboard(prompt);
               }}
               onSaveTheme={saveTheme}
             />
