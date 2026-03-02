@@ -68,6 +68,7 @@ export const OutlineTaskRow: React.FC<{
   canNestTask,
   onAddSubtask,
 }) => {
+    const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
     const [isOver, setIsOver] = useState(false);
     const [dropMode, setDropMode] = useState<'before' | 'inside' | 'after'>('inside');
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -191,13 +192,12 @@ export const OutlineTaskRow: React.FC<{
         onDragStart={handleDragStart}
         onDragOver={(event) => {
           event.preventDefault();
-          if (event.dataTransfer.getData('context') === 'reorder') {
-            const rect = event.currentTarget.getBoundingClientRect();
-            const offsetY = event.clientY - rect.top;
-            const nextMode = offsetY < rect.height * 0.28 ? 'before' : offsetY > rect.height * 0.72 ? 'after' : 'inside';
-            setDropMode(nextMode);
-            setIsOver(true);
-          }
+          if (!hasTaskDragPayload(event.dataTransfer)) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const offsetY = event.clientY - rect.top;
+          const nextMode = offsetY < rect.height * 0.28 ? 'before' : offsetY > rect.height * 0.72 ? 'after' : 'inside';
+          setDropMode(nextMode);
+          setIsOver(true);
         }}
         onDragLeave={() => {
           setIsOver(false);
@@ -207,7 +207,7 @@ export const OutlineTaskRow: React.FC<{
           event.preventDefault();
           setIsOver(false);
           const sourceId = event.dataTransfer.getData('taskId');
-          if (sourceId && sourceId !== task.id && event.dataTransfer.getData('context') === 'reorder') {
+          if (sourceId && sourceId !== task.id && hasTaskDragPayload(event.dataTransfer)) {
             if (dropMode === 'before') onMoveBefore(sourceId, task.id);
             else if (dropMode === 'after') onMoveAfter(sourceId, task.id);
             else if (canNestTask(sourceId, task.id)) onNestInto(sourceId, task.id);

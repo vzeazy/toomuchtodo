@@ -3,7 +3,9 @@ import {
   AlignLeft,
   Calendar,
   CalendarClock,
+  CalendarDays,
   ChevronDown,
+
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
@@ -424,7 +426,7 @@ export default function App() {
           {/* Group 2: Static View Toggles */}
           <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
             <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Planner (8)">
-              <Columns size={16} />
+              <CalendarDays size={16} />
             </button>
             <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View (1-7)">
               <List size={16} />

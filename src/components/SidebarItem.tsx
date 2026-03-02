@@ -12,19 +12,20 @@ export const SidebarItem: React.FC<{
   indent?: number;
   actions?: React.ReactNode;
 }> = ({ icon: Icon, label, count, active, onClick, onDrop, className = '', iconColor, indent = 0, actions }) => {
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
   const [isOver, setIsOver] = React.useState(false);
 
   return (
     <div
       onClick={onClick}
       onDragOver={(event) => {
-        if (event.dataTransfer.getData('context') !== 'reorder') return;
+        if (!hasTaskDragPayload(event.dataTransfer)) return;
         event.preventDefault();
         setIsOver(true);
       }}
       onDragLeave={() => setIsOver(false)}
       onDrop={(event) => {
-        if (event.dataTransfer.getData('context') !== 'reorder') return;
+        if (!hasTaskDragPayload(event.dataTransfer)) return;
         event.preventDefault();
         setIsOver(false);
         const id = event.dataTransfer.getData('taskId');

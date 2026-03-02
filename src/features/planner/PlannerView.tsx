@@ -42,6 +42,7 @@ export const PlannerView: React.FC<{
   onToggleCompactEmptyDays: () => void;
   onToggleStartOnToday: () => void;
 }> = ({ weekDays, tasks, projects, widthMode, selectedArea, hideEmptyProjects, compactEmptyDays, startOnToday, onUpdateTask, onMoveTaskBefore, onMoveTaskAfter, onToggleComplete, onAddTask, onAddProjectTask, onOpenTask, onOpenProject, onOpenDay, onToggleHideEmptyProjects, onToggleCompactEmptyDays, onToggleStartOnToday }) => {
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
   const weather = useWeather();
   const [dragOverDay, setDragOverDay] = React.useState<string | null>(null);
   const [dragOverProject, setDragOverProject] = React.useState<string | null>(null);
@@ -99,7 +100,7 @@ export const PlannerView: React.FC<{
               onDragEnter={() => setDragOverDay(day.dateStr)}
               onDragLeave={() => setDragOverDay((value) => value === day.dateStr ? null : value)}
               onDragOver={(event) => {
-                if (event.dataTransfer.getData('context') !== 'reorder') return;
+                if (!hasTaskDragPayload(event.dataTransfer)) return;
                 event.preventDefault();
               }}
               onDrop={(event) => {
@@ -196,7 +197,7 @@ export const PlannerView: React.FC<{
               onDragEnter={() => setDragOverProject(project.id)}
               onDragLeave={() => setDragOverProject((value) => value === project.id ? null : value)}
               onDragOver={(event) => {
-                if (event.dataTransfer.getData('context') !== 'reorder') return;
+                if (!hasTaskDragPayload(event.dataTransfer)) return;
                 event.preventDefault();
               }}
               onDrop={(event) => {
@@ -238,6 +239,7 @@ const PlannerDropZone: React.FC<{
   label: string;
   onDropTask: (id: string) => void;
 }> = ({ label, onDropTask }) => {
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskId');
   const [isDragOver, setIsDragOver] = React.useState(false);
 
   return (
@@ -246,7 +248,7 @@ const PlannerDropZone: React.FC<{
       onDragEnter={() => setIsDragOver(true)}
       onDragLeave={() => setIsDragOver(false)}
       onDragOver={(event) => {
-        if (event.dataTransfer.getData('context') !== 'reorder') return;
+        if (!hasTaskDragPayload(event.dataTransfer)) return;
         event.preventDefault();
         setIsDragOver(true);
       }}
