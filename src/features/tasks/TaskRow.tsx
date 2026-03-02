@@ -9,6 +9,7 @@ export const TaskRow: React.FC<{
   allTasks: Task[];
   projects: Project[];
   childCount?: number;
+  compact?: boolean;
   onToggleStar: (id: string) => void;
   onToggleComplete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Task>) => void;
@@ -19,7 +20,7 @@ export const TaskRow: React.FC<{
   onOpenTask: (task: Task) => void;
   canNestTask: (sourceId: string, targetId: string) => boolean;
   onAddSubtask: (parentTask: Task, title: string) => void;
-}> = ({ task, allTasks, projects, childCount = 0, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
+}> = ({ task, allTasks, projects, childCount = 0, compact = false, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
   // HTML5 drag API lowercases all type keys in dataTransfer.types
   const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
   const rowRef = useRef<HTMLDivElement>(null);
@@ -187,14 +188,14 @@ export const TaskRow: React.FC<{
         <div className="pointer-events-none absolute bottom-1 left-0 top-1 z-20 w-[3px] rounded-full bg-[var(--accent)]" />
       )}
       <div
-        className="relative flex cursor-pointer items-center gap-4 py-3 pl-0 pr-4"
+        className={`relative flex cursor-pointer items-center pl-0 pr-4 ${compact ? 'gap-3 py-2' : 'gap-4 py-3'}`}
         onClick={handleRowClick}
         onDoubleClick={handleTitleDoubleClick}
       >
         <div className="absolute -left-4 top-1/2 -translate-y-1/2 cursor-grab text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
           <GripVertical size={13} />
         </div>
-        <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[18px] w-[18px]" />
+        <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className={compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center">
@@ -216,18 +217,18 @@ export const TaskRow: React.FC<{
                     setIsEditingTitle(false);
                   }
                 }}
-                className="w-full bg-transparent p-0 text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0"
+                className={`w-full bg-transparent p-0 font-medium tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0 ${compact ? 'text-[12.5px]' : 'text-[13px]'}`}
               />
             ) : (
               <span
-                className={`truncate text-[13px] font-medium tracking-[-0.01em] ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
+                className={`truncate font-medium tracking-[-0.01em] ${compact ? 'text-[12.5px]' : 'text-[13px]'} ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
               >
                 {task.title}
               </span>
             )}
           </div>
           {(task.tags.length > 0 || task.projectId) && (
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+            <div className={`flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${compact ? 'mt-0.5' : 'mt-1'}`}>
               {task.projectId && (
                 <span className="font-medium text-[var(--text-muted)] opacity-80">
                   {projects.find((project) => project.id === task.projectId)?.name || 'Project'}

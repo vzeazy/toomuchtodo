@@ -66,6 +66,7 @@ export const TaskListView: React.FC<{
   onBack,
 }) => {
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const [dragOverDayPart, setDragOverDayPart] = useState<string | null>(null);
     const lastParentIdForGhost = React.useRef<string | null>(null);
 
     const listTasks = useMemo(() => {
@@ -91,10 +92,11 @@ export const TaskListView: React.FC<{
     const isGroupedDayView = currentView === 'day' && groupDayViewByPart;
 
     const dayPartSections = useMemo(() => {
-      const order: Array<{ key: DayPart; label: string }> = [
-        { key: 'morning', label: 'Morning' },
-        { key: 'afternoon', label: 'Afternoon' },
-        { key: 'evening', label: 'Evening' },
+      const order: Array<{ key: DayPart | null; id: string; label: string }> = [
+        { key: null, id: 'unassigned', label: 'Unassigned' },
+        { key: 'morning', id: 'morning', label: 'Morning' },
+        { key: 'afternoon', id: 'afternoon', label: 'Afternoon' },
+        { key: 'evening', id: 'evening', label: 'Evening' },
       ];
       return order.map((section) => ({
         ...section,
@@ -216,7 +218,7 @@ export const TaskListView: React.FC<{
       onMoveTaskAfter(sourceId, targetId, targetId);
     };
 
-    const assignTaskToDayPart = (taskId: string, dayPart: DayPart) => {
+    const assignTaskToDayPart = (taskId: string, dayPart: DayPart | null) => {
       onUpdateTask(taskId, { dayPart });
     };
 
@@ -288,7 +290,30 @@ export const TaskListView: React.FC<{
           {isGroupedDayView && taskListMode === 'list' ? (
             <>
               {dayPartSections.map((section) => (
-                <section key={section.key} className="mb-6 last:mb-0">
+                <section
+                  key={section.id}
+                  className={`mb-5 last:mb-0 rounded-2xl transition-colors ${dragOverDayPart === section.id ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
+                  onDragOver={(event) => {
+                    const hasTaskDragPayload = Array.from(event.dataTransfer.types || []).includes('taskid');
+                    if (!hasTaskDragPayload) return;
+                    event.preventDefault();
+                    setDragOverDayPart(section.id);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                      setDragOverDayPart((current) => current === section.id ? null : current);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragOverDayPart(null);
+                    const taskId = event.dataTransfer.getData('taskId');
+                    if (!taskId) return;
+                    const lastTask = section.listTasks[section.listTasks.length - 1];
+                    if (lastTask) handleMoveTaskAfterList(taskId, lastTask.id);
+                    assignTaskToDayPart(taskId, section.key);
+                  }}
+                >
                   <div className="mb-2 flex items-center justify-between border-b soft-divider pb-2">
                     <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">{section.label}</div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">{section.listTasks.length}</div>
@@ -309,6 +334,7 @@ export const TaskListView: React.FC<{
                         allTasks={allTasks}
                         projects={projects}
                         childCount={childCounts.get(task.id) || 0}
+                        compact={true}
                         onToggleStar={onToggleStar}
                         onToggleComplete={onToggleComplete}
                         onUpdate={onUpdateTask}
@@ -343,7 +369,30 @@ export const TaskListView: React.FC<{
           ) : isGroupedDayView && taskListMode === 'outline' ? (
             <>
               {dayPartSections.map((section) => (
-                <section key={section.key} className="mb-6 last:mb-0">
+                <section
+                  key={section.id}
+                  className={`mb-5 last:mb-0 rounded-2xl transition-colors ${dragOverDayPart === section.id ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
+                  onDragOver={(event) => {
+                    const hasTaskDragPayload = Array.from(event.dataTransfer.types || []).includes('taskid');
+                    if (!hasTaskDragPayload) return;
+                    event.preventDefault();
+                    setDragOverDayPart(section.id);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                      setDragOverDayPart((current) => current === section.id ? null : current);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragOverDayPart(null);
+                    const taskId = event.dataTransfer.getData('taskId');
+                    if (!taskId) return;
+                    const lastRow = section.outlineRows[section.outlineRows.length - 1];
+                    if (lastRow) handleMoveTaskAfterList(taskId, lastRow.task.id);
+                    assignTaskToDayPart(taskId, section.key);
+                  }}
+                >
                   <div className="mb-2 flex items-center justify-between border-b soft-divider pb-2">
                     <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">{section.label}</div>
                     <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">{section.outlineRows.length}</div>
@@ -365,6 +414,7 @@ export const TaskListView: React.FC<{
                         projects={projects}
                         depth={row.depth}
                         childCount={childCounts.get(row.task.id) || 0}
+                        compact={true}
                         hasChildren={row.hasChildren}
                         isContextAncestor={row.isContextAncestor}
                         canIndent={canIndentTask(row.task.id)}
@@ -521,6 +571,7 @@ export const TaskListView: React.FC<{
                   projects={projects}
                   depth={row.depth}
                   childCount={childCounts.get(row.task.id) || 0}
+                  compact={currentView === 'day'}
                   hasChildren={row.hasChildren}
                   isContextAncestor={row.isContextAncestor}
                   canIndent={canIndentTask(row.task.id)}
@@ -553,6 +604,7 @@ export const TaskListView: React.FC<{
                   allTasks={allTasks}
                   projects={projects}
                   childCount={childCounts.get(task.id) || 0}
+                  compact={currentView === 'day'}
                   onToggleStar={onToggleStar}
                   onToggleComplete={onToggleComplete}
                   onUpdate={onUpdateTask}

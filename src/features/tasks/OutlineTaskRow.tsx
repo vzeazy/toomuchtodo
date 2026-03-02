@@ -20,6 +20,7 @@ export const OutlineTaskRow: React.FC<{
   projects: Project[];
   depth: number;
   childCount: number;
+  compact?: boolean;
   hasChildren: boolean;
   isContextAncestor: boolean;
   canIndent: boolean;
@@ -46,6 +47,7 @@ export const OutlineTaskRow: React.FC<{
   projects,
   depth,
   childCount,
+  compact = false,
   hasChildren,
   isContextAncestor,
   isExpanded,
@@ -241,7 +243,7 @@ export const OutlineTaskRow: React.FC<{
             <div className="pointer-events-none absolute bottom-0 z-20 h-[3px] rounded-r-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px`, right: 0 }} />
           </>
         )}
-        <div className="relative flex items-center gap-2 px-4 py-2" style={{ paddingLeft: `${16 + (depth * 24)}px` }}>
+        <div className={`relative flex items-center gap-2 px-4 ${compact ? 'py-1.5' : 'py-2'}`} style={{ paddingLeft: `${16 + (depth * 24)}px` }}>
           <div className="absolute top-1/2 -translate-y-1/2 cursor-grab text-[var(--text-muted)]" style={{ left: `${depth * 24 - 10}px` }}>
             <GripVertical size={12} className="opacity-0 transition-opacity group-hover:opacity-100" />
           </div>
@@ -263,7 +265,7 @@ export const OutlineTaskRow: React.FC<{
             )}
           </div>
 
-          <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[18px] w-[18px]" />
+          <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className={compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} />
 
           <div className="min-w-0 flex-1 cursor-pointer" onClick={handleRowClick} onDoubleClick={handleTitleDoubleClick}>
             <div className="flex items-center gap-2">
@@ -285,11 +287,11 @@ export const OutlineTaskRow: React.FC<{
                       setIsEditingTitle(false);
                     }
                   }}
-                  className="w-full bg-transparent p-0 text-[13px] tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0"
+                  className={`w-full bg-transparent p-0 tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0 ${compact ? 'text-[12.5px]' : 'text-[13px]'}`}
                 />
               ) : (
                 <span
-                  className={`truncate text-[13px] tracking-[-0.01em] ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
+                  className={`truncate tracking-[-0.01em] ${compact ? 'text-[12.5px]' : 'text-[13px]'} ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
                 >
                   {task.title}
                 </span>
