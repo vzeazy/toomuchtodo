@@ -282,14 +282,26 @@ export const useAppStore = () => {
     }));
   }, []);
 
-  const deleteProject = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      projects: prev.projects
-        .filter((project) => project.id !== id)
-        .map((project) => project.parentId === id ? { ...project, parentId: null } : project),
-      tasks: prev.tasks.map((task) => task.projectId === id ? { ...task, projectId: null } : task),
-    }));
+  const deleteProject = useCallback((id: string, deleteTasks = false) => {
+    setState((prev) => {
+      const removedTaskIds = new Set(
+        deleteTasks
+          ? prev.tasks.filter((task) => task.projectId === id).map((task) => task.id)
+          : [],
+      );
+
+      return {
+        ...prev,
+        projects: prev.projects
+          .filter((project) => project.id !== id)
+          .map((project) => project.parentId === id ? { ...project, parentId: null } : project),
+        tasks: deleteTasks
+          ? prev.tasks
+            .filter((task) => !removedTaskIds.has(task.id))
+            .map((task) => removedTaskIds.has(task.parentId || '') ? { ...task, parentId: null } : task)
+          : prev.tasks.map((task) => task.projectId === id ? { ...task, projectId: null } : task),
+      };
+    });
   }, []);
 
   const setActiveTheme = useCallback((themeId: string) => {

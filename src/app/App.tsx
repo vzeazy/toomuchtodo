@@ -359,7 +359,21 @@ export default function App() {
   }, [projectMenuId]);
 
   const handleDeleteProject = useCallback((projectId: string) => {
-    deleteProject(projectId);
+    const project = projects.find((item) => item.id === projectId);
+    const projectName = project?.name || 'this project';
+    const directTaskCount = tasks.filter((task) => task.projectId === projectId).length;
+
+    const shouldDeleteProject = window.confirm(`Delete "${projectName}"?`);
+    if (!shouldDeleteProject) {
+      setProjectMenuId(null);
+      return;
+    }
+
+    const shouldDeleteTasks = directTaskCount > 0
+      ? window.confirm(`Also delete ${directTaskCount} task${directTaskCount === 1 ? '' : 's'} in "${projectName}"? Click OK to delete them, or Cancel to keep them and remove only the project.`)
+      : false;
+
+    deleteProject(projectId, shouldDeleteTasks);
     setProjectMenuId(null);
     setAdditionalPanels((prev) => prev.filter((panel) => panel.projectId !== projectId));
 
@@ -367,7 +381,7 @@ export default function App() {
       setSelectedProjectId(null);
       if (currentView === 'all') setCurrentView('next');
     }
-  }, [currentView, deleteProject, selectedProjectId]);
+  }, [currentView, deleteProject, projects, selectedProjectId, tasks]);
 
   return (
     <div className="app-frame flex h-screen flex-col select-none" style={themeVariables}>
