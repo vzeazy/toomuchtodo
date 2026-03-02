@@ -95,6 +95,26 @@ Nuances:
 - Drag-to-project/area in off-canvas detaches the dropped subtask (sets parent to null) and applies scope updates without requiring extra dialogs.
 - Build verified after refinement pass: `npm run build` (pass).
 
+### 2026-03-02 - Task List Roundtrip UX simplified (main flow promoted)
+
+- Refocused the primary Task List Roundtrip section on the simple LLM workflow:
+  - user enters project name + project details/nuance
+  - app generates/copies a template prompt
+  - user pastes LLM JSON output directly into the app
+  - app imports via structured validation (`upsert`)
+- Removed the previous quick-start card emphasis from the main flow and replaced it with linear, guided controls.
+- Reorganized advanced tools into grouped sections inside the collapsible area:
+  - scope + import strategy
+  - transfer operations (JSON export/import)
+  - planning support (markdown export + progress prompt)
+  - prompt preview (advanced diagnostics)
+
+Nuances:
+
+- Main flow now supports direct paste-import (no file selection required).
+- Advanced tooling remains available but intentionally secondary.
+- Build verified after simplification: `npm run build` (pass).
+
 ---
 
 ## What exists today (codebase findings)

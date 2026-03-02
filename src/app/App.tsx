@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlignLeft,
   Calendar,
+  CalendarClock,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
   Clock,
-  CloudRain,
+  Coffee,
   Columns,
   Eye,
   EyeOff,
@@ -23,6 +24,7 @@ import {
   Search,
   Settings,
   Star,
+
 } from 'lucide-react';
 import { SidebarItem } from '../components/SidebarItem';
 import { ShortcutsModal } from '../components/ShortcutsModal';
@@ -498,8 +500,8 @@ export default function App() {
           <SidebarItem icon={Inbox} label="Inbox" count={counts.inbox} active={currentView === 'inbox' || additionalPanels.some(p => p.view === 'inbox')} onClick={(e) => handleViewSelect(e, 'inbox')} onDrop={(id) => updateTask(id, { status: 'inbox' })} />
           <SidebarItem icon={ChevronsRight} label="Next" count={counts.next} active={currentView === 'next' || additionalPanels.some(p => p.view === 'next')} onClick={(e) => handleViewSelect(e, 'next')} onDrop={(id) => updateTask(id, { status: 'next' })} />
           <SidebarItem icon={Clock} label="Waiting" count={counts.waiting} active={currentView === 'waiting' || additionalPanels.some(p => p.view === 'waiting')} onClick={(e) => handleViewSelect(e, 'waiting')} onDrop={(id) => updateTask(id, { status: 'waiting' })} />
-          <SidebarItem icon={Calendar} label="Scheduled" count={counts.scheduled} active={currentView === 'scheduled' || additionalPanels.some(p => p.view === 'scheduled')} onClick={(e) => handleViewSelect(e, 'scheduled')} onDrop={(id) => updateTask(id, { status: 'scheduled' })} />
-          <SidebarItem icon={CloudRain} label="Someday" count={counts.someday} active={currentView === 'someday' || additionalPanels.some(p => p.view === 'someday')} onClick={(e) => handleViewSelect(e, 'someday')} onDrop={(id) => updateTask(id, { status: 'someday' })} />
+          <SidebarItem icon={CalendarClock} label="Scheduled" count={counts.scheduled} active={currentView === 'scheduled' || additionalPanels.some(p => p.view === 'scheduled')} onClick={(e) => handleViewSelect(e, 'scheduled')} onDrop={(id) => updateTask(id, { status: 'scheduled' })} />
+          <SidebarItem icon={Coffee} label="Someday" count={counts.someday} active={currentView === 'someday' || additionalPanels.some(p => p.view === 'someday')} onClick={(e) => handleViewSelect(e, 'someday')} onDrop={(id) => updateTask(id, { status: 'someday' })} />
 
           <div className="my-4">
             <div className="mb-2 flex items-center justify-between px-3">

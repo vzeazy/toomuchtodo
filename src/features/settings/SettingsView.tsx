@@ -31,30 +31,25 @@ export const SettingsView: React.FC<{
 }) => {
   const [themeBrief, setThemeBrief] = useState('');
   const [themeJson, setThemeJson] = useState('');
-  const [roundtripProjectId, setRoundtripProjectId] = useState('');
-  const [roundtripDirection, setRoundtripDirection] = useState('');
+  const [llmProjectName, setLlmProjectName] = useState('');
+  const [llmProjectBrief, setLlmProjectBrief] = useState('');
+  const [llmResponseJson, setLlmResponseJson] = useState('');
   const [taskListScopeMode, setTaskListScopeMode] = useState<'inbox' | 'project'>('inbox');
   const [taskListProjectId, setTaskListProjectId] = useState('');
   const [taskListImportMode, setTaskListImportMode] = useState<TaskListImportMode>('upsert');
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const quickTaskListInputRef = useRef<HTMLInputElement>(null);
   const advancedTaskListInputRef = useRef<HTMLInputElement>(null);
 
   const promptText = getThemePrompt(themeBrief);
-  const selectedRoundtripProject = useMemo(
-    () => projects.find((project) => project.id === roundtripProjectId),
-    [projects, roundtripProjectId],
-  );
   const roundtripPromptText = useMemo(
-    () => getTaskListGenerationPrompt(selectedRoundtripProject?.name || 'Imported Project', roundtripDirection),
-    [roundtripDirection, selectedRoundtripProject?.name],
+    () => getTaskListGenerationPrompt(llmProjectName || 'Imported Project', llmProjectBrief),
+    [llmProjectBrief, llmProjectName],
   );
   const selectedScope: TaskListScope = taskListScopeMode === 'inbox'
     ? { type: 'inbox' }
     : { type: 'project', projectId: taskListProjectId };
   const canUseProjectScope = taskListScopeMode === 'inbox' || !!taskListProjectId;
-  const canUseRoundtripQuickStart = !!roundtripProjectId;
 
   const importTaskListFile = async (
     file: File,
@@ -82,6 +77,19 @@ export const SettingsView: React.FC<{
     if (!shouldApply) return;
     onImportTaskListJson(payload, mode);
     setMessage(`Imported task list from ${file.name} (${incomingCount} tasks).`);
+  };
+
+  const importTaskListText = async (text: string, mode: TaskListImportMode) => {
+    const parsed = JSON.parse(text) as TaskListExchange;
+    if (!isTaskListExchange(parsed)) {
+      setMessage('Import failed. Pasted JSON is not a supported task-list export.');
+      return;
+    }
+    const incomingCount = Array.isArray(parsed.tasks) ? parsed.tasks.length : 0;
+    const shouldApply = window.confirm(`Import ${incomingCount} tasks with "${mode}" mode?`);
+    if (!shouldApply) return;
+    onImportTaskListJson(parsed, mode);
+    setMessage(`Imported generated project (${incomingCount} tasks).`);
   };
 
   return (
@@ -131,88 +139,73 @@ export const SettingsView: React.FC<{
           <Settings2 size={18} className="text-[var(--accent)]" />
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Task List Roundtrip</h2>
         </div>
-        <p className="mb-4 text-sm text-[var(--text-secondary)]">Quick start: choose a project, copy the LLM template prompt, then import the JSON result.</p>
+        <p className="mb-4 text-sm text-[var(--text-secondary)]">
+          Describe the project you want, copy the generated prompt into your favorite LLM, then paste the returned JSON here to import.
+        </p>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Target project for import</label>
-            <select
-              value={roundtripProjectId}
-              onChange={(event) => setRoundtripProjectId(event.target.value)}
-              className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
+        <div className="space-y-3">
+          <input
+            type="text"
+            value={llmProjectName}
+            onChange={(event) => setLlmProjectName(event.target.value)}
+            placeholder="Project name (example: Q2 Launch Campaign)"
+            className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
+          />
+          <textarea
+            value={llmProjectBrief}
+            onChange={(event) => setLlmProjectBrief(event.target.value)}
+            placeholder="Project details, goals, constraints, timeline nuance, dependencies, team context..."
+            className="min-h-[116px] w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText(roundtripPromptText);
+                setMessage('Task-list generation prompt copied to clipboard. Paste it into your LLM.');
+              }}
+              className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
             >
-              <option value="">Select project</option>
-              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-            </select>
+              <Copy size={14} /> Copy prompt for LLM
+            </button>
+            <span className="text-xs text-[var(--text-muted)]">Step 1: copy prompt -&gt; Step 2: run in LLM -&gt; Step 3: paste JSON below.</span>
           </div>
-          <div className="space-y-2">
-            <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Direction / nuance for the LLM</label>
-            <textarea
-              value={roundtripDirection}
-              onChange={(event) => setRoundtripDirection(event.target.value)}
-              placeholder="Example: 6-week launch plan, strong QA gate, include docs + social rollout, avoid weekend due dates."
-              className="min-h-[88px] w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
+          <textarea
+            value={llmResponseJson}
+            onChange={(event) => setLlmResponseJson(event.target.value)}
+            placeholder='Paste LLM JSON output here (schema: "too-much-to-do.task-list")'
+            className="min-h-[170px] w-full rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
+          />
           <button
             type="button"
-            disabled={!canUseRoundtripQuickStart}
             onClick={async () => {
-              if (!canUseRoundtripQuickStart) return;
-              await navigator.clipboard.writeText(roundtripPromptText);
-              setMessage('Task-list generation prompt copied to clipboard.');
+              const text = llmResponseJson.trim();
+              if (!text) {
+                setMessage('Paste generated project JSON first.');
+                return;
+              }
+              try {
+                await importTaskListText(text, 'upsert');
+                setLlmResponseJson('');
+              } catch {
+                setMessage('Import failed. Generated JSON could not be parsed.');
+              }
             }}
-            className="flex min-h-[112px] flex-col items-start justify-between rounded-2xl border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-4 text-left transition-colors hover:border-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
           >
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
-              <Copy size={14} /> Copy LLM task-list prompt
-            </div>
-            <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
-              Copies a ready template prompt using your direction so the LLM returns valid importable JSON.
-            </p>
-          </button>
-
-          <button
-            type="button"
-            disabled={!canUseRoundtripQuickStart}
-            onClick={() => quickTaskListInputRef.current?.click()}
-            className="flex min-h-[112px] flex-col items-start justify-between rounded-2xl bg-[var(--accent)] p-4 text-left transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--accent-contrast)]">
-              <Upload size={14} /> Import project JSON
-            </div>
-            <p className="text-xs leading-relaxed text-[var(--accent-contrast)]/90">
-              Imports the returned JSON into the selected project using safe upsert behavior.
-            </p>
+            <Upload size={14} /> Import generated project JSON
           </button>
         </div>
-
-        <input
-          ref={quickTaskListInputRef}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={async (event) => {
-            const file = event.target.files?.[0];
-            if (!file || !roundtripProjectId) return;
-            try {
-              await importTaskListFile(file, 'upsert', { type: 'project', projectId: roundtripProjectId });
-            } catch {
-              setMessage('Task list import failed. JSON was invalid.');
-            } finally {
-              event.target.value = '';
-            }
-          }}
-        />
 
         <details className="mt-5 rounded-xl border border-[var(--border-color)] bg-[var(--panel-alt-bg)]">
           <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-[var(--text-primary)]">
             Advanced roundtrip tools
           </summary>
-          <div className="space-y-4 border-t border-[var(--border-color)] px-4 py-4">
+          <div className="space-y-5 border-t border-[var(--border-color)] px-4 py-4">
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">Scope + import strategy</h3>
+              <p className="text-xs text-[var(--text-secondary)]">Choose which list you are operating on and how incoming JSON should be applied.</p>
+            </div>
             <div className="grid gap-3 md:grid-cols-3">
               <select
                 value={taskListScopeMode}
@@ -244,7 +237,11 @@ export const SettingsView: React.FC<{
               </select>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">Transfer operations</h3>
+              <p className="text-xs text-[var(--text-secondary)]">Direct list-level JSON export/import for backups, migrations, and bulk updates.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
               <button
                 type="button"
                 disabled={!canUseProjectScope}
@@ -253,20 +250,28 @@ export const SettingsView: React.FC<{
                   onExportTaskListJson(selectedScope);
                   setMessage('Task list JSON export generated.');
                 }}
-                className="flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-4 text-left transition-colors hover:border-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Download size={14} /> Export list JSON
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Download size={14} /> Export list JSON</div>
+                <p className="text-xs text-[var(--text-secondary)]">Download the currently scoped list as structured JSON.</p>
               </button>
 
               <button
                 type="button"
                 disabled={!canUseProjectScope}
                 onClick={() => advancedTaskListInputRef.current?.click()}
-                className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-4 text-left transition-colors hover:border-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Upload size={14} /> Import list JSON
+                <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Upload size={14} /> Import list JSON</div>
+                <p className="text-xs text-[var(--text-secondary)]">Import from file using the selected strategy.</p>
               </button>
+            </div>
 
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">Planning support</h3>
+              <p className="text-xs text-[var(--text-secondary)]">Tools for reporting and external docs.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
               <button
                 type="button"
                 disabled={!canUseProjectScope}
@@ -275,9 +280,10 @@ export const SettingsView: React.FC<{
                   onExportTaskListMarkdown(selectedScope);
                   setMessage('Task list markdown export generated.');
                 }}
-                className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-4 text-left transition-colors hover:border-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Export list Markdown
+                <div className="mb-1 text-sm font-semibold text-[var(--text-primary)]">Export list Markdown</div>
+                <p className="text-xs text-[var(--text-secondary)]">Generate simple markdown output for docs or sharing.</p>
               </button>
 
               <button
@@ -288,11 +294,17 @@ export const SettingsView: React.FC<{
                   await onCopyTaskListProgressPrompt(selectedScope);
                   setMessage('Task list progress prompt copied to clipboard.');
                 }}
-                className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-4 text-left transition-colors hover:border-[var(--focus)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Copy progress prompt
+                <div className="mb-1 text-sm font-semibold text-[var(--text-primary)]">Copy progress prompt</div>
+                <p className="text-xs text-[var(--text-secondary)]">Export current status context for LLM timeline adjustments.</p>
               </button>
             </div>
+
+            <details className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)]">
+              <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-[var(--text-primary)]">Preview generated prompt</summary>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap border-t border-[var(--border-color)] px-3 py-3 text-xs leading-relaxed text-[var(--text-secondary)]">{roundtripPromptText}</pre>
+            </details>
           </div>
         </details>
 
@@ -314,10 +326,6 @@ export const SettingsView: React.FC<{
           }}
         />
 
-        <details className="mt-4 rounded-xl border border-[var(--border-color)] bg-[var(--panel-alt-bg)]">
-          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-[var(--text-primary)]">Preview copied prompt</summary>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap border-t border-[var(--border-color)] px-4 py-4 text-xs leading-relaxed text-[var(--text-secondary)]">{roundtripPromptText}</pre>
-        </details>
       </section>
 
       <section className="panel-surface rounded-[28px] p-6">
