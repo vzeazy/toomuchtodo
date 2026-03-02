@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { Star, Trash2, X, Plus, CornerDownRight, AlignLeft } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Star, Trash2, X, Plus, CornerDownRight, AlignLeft, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import { SmartSelect } from '../../components/SmartSelect';
-import { MarkdownEditor } from '../../components/MarkdownEditor';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
+import { renderMarkdown } from '../../lib/markdown';
 import { Project, Task } from '../../types';
 import { canReparentTask } from './taskTree';
 
@@ -18,18 +18,31 @@ export const TaskModal: React.FC<{
   onDelete: (id: string) => void;
   onToggleStar: (id: string) => void;
   onToggleComplete: (id: string) => void;
+  onMoveTaskBefore: (sourceId: string, targetId: string, parentId: string | null) => void;
+  onMoveTaskAfter: (sourceId: string, targetId: string, parentId: string | null) => void;
   onAddSubtask?: (parentTask: Task, title: string) => void;
   onOpenTask?: (task: Task) => void;
-}> = ({ task, tasks, projects, onClose, onUpdate, onSetParent, onDelete, onToggleStar, onToggleComplete, onAddSubtask, onOpenTask }) => {
+}> = ({ task, tasks, projects, onClose, onUpdate, onSetParent, onDelete, onToggleStar, onToggleComplete, onMoveTaskBefore, onMoveTaskAfter, onAddSubtask, onOpenTask }) => {
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [draftSubtaskTitle, setDraftSubtaskTitle] = useState('');
+  const [isEditingNotes, setIsEditingNotes] = useState(!task.description.trim());
+  const [isNotesExpanded, setIsNotesExpanded] = useState(false);
+  const [dragTarget, setDragTarget] = useState<string | null>(null);
 
   const tagValue = useMemo(() => task.tags.join(', '), [task.tags]);
   const subtasks = useMemo(() => tasks.filter((t) => t.parentId === task.id), [tasks, task.id]);
+  const noteLineCount = useMemo(() => task.description.split('\n').length, [task.description]);
+  const shouldCollapseNotes = task.description.length > 460 || noteLineCount > 10;
   const availableParents = useMemo(
     () => tasks.filter((candidate) => candidate.id !== task.id && canReparentTask(task.id, candidate.id, tasks)),
     [task.id, tasks],
   );
+
+  useEffect(() => {
+    setIsEditingNotes(!task.description.trim());
+    setIsNotesExpanded(false);
+    setDragTarget(null);
+  }, [task.id, task.description]);
 
   const commitSubtask = (keepOpen = false) => {
     const nextTitle = draftSubtaskTitle.trim();
@@ -41,6 +54,11 @@ export const TaskModal: React.FC<{
     if (onAddSubtask) onAddSubtask(task, nextTitle);
     setDraftSubtaskTitle('');
     setIsAddingSubtask(keepOpen);
+  };
+
+  const detachSubtask = (subtaskId: string, updates?: Partial<Task>) => {
+    onSetParent(subtaskId, null);
+    if (updates) onUpdate(subtaskId, updates);
   };
 
   return (
@@ -74,7 +92,48 @@ export const TaskModal: React.FC<{
           </div>
 
           <div className="mb-8">
-            <MarkdownEditor value={task.description} onChange={(value) => onUpdate(task.id, { description: value })} />
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Notes</label>
+              <div className="flex items-center gap-2">
+                {!isEditingNotes && shouldCollapseNotes && (
+                  <button
+                    type="button"
+                    onClick={() => setIsNotesExpanded((value) => !value)}
+                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                  >
+                    {isNotesExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                    {isNotesExpanded ? 'Collapse' : 'Expand'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsEditingNotes((value) => !value)}
+                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                >
+                  <Pencil size={11} />
+                  {isEditingNotes ? 'Preview' : 'Edit'}
+                </button>
+              </div>
+            </div>
+            {isEditingNotes ? (
+              <textarea
+                value={task.description}
+                onChange={(event) => onUpdate(task.id, { description: event.target.value })}
+                placeholder="Use markdown for headings, checklists, and execution notes."
+                className="markdown-preview min-h-[140px] w-full resize-y rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)]"
+                spellCheck={false}
+              />
+            ) : (
+              <div className="relative overflow-hidden rounded-xl bg-[rgba(255,255,255,0.02)] p-3">
+                <div
+                  className={`markdown-preview text-[12px] leading-relaxed text-[var(--text-secondary)] ${shouldCollapseNotes && !isNotesExpanded ? 'max-h-[180px] overflow-hidden' : ''}`}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(task.description || '_No notes yet._') }}
+                />
+                {shouldCollapseNotes && !isNotesExpanded && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[var(--panel-bg)] to-transparent" />
+                )}
+              </div>
+            )}
           </div>
 
           {(subtasks.length > 0 || isAddingSubtask) && (
@@ -94,17 +153,44 @@ export const TaskModal: React.FC<{
               </div>
               <div className="space-y-1.5 pt-1">
                 {subtasks.map((subtask) => (
-                  <button
-                    key={subtask.id}
-                    type="button"
-                    onClick={() => onOpenTask && onOpenTask(subtask)}
-                    className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
-                  >
-                    <TaskCheckbox checked={subtask.status === 'completed'} onToggle={() => onToggleComplete(subtask.id)} />
-                    <span className={`block flex-1 truncate text-[13px] tracking-[-0.01em] ${subtask.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>{subtask.title}</span>
-                    {subtask.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" />}
-                  </button>
+                  <React.Fragment key={subtask.id}>
+                    <SubtaskDropZone
+                      active={dragTarget === `before:${subtask.id}`}
+                      onDragEnter={() => setDragTarget(`before:${subtask.id}`)}
+                      onDragLeave={() => setDragTarget((value) => value === `before:${subtask.id}` ? null : value)}
+                      onDrop={(sourceId) => onMoveTaskBefore(sourceId, subtask.id, task.id)}
+                    />
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData('taskId', subtask.id);
+                        event.dataTransfer.setData('context', 'reorder');
+                      }}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const sourceId = event.dataTransfer.getData('taskId');
+                        if (!sourceId || sourceId === subtask.id) return;
+                        onMoveTaskAfter(sourceId, subtask.id, task.id);
+                      }}
+                      onClick={() => onOpenTask && onOpenTask(subtask)}
+                      className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+                    >
+                      <TaskCheckbox checked={subtask.status === 'completed'} onToggle={() => onToggleComplete(subtask.id)} />
+                      <span className={`block flex-1 truncate text-[13px] tracking-[-0.01em] ${subtask.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>{subtask.title}</span>
+                      {subtask.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" />}
+                    </button>
+                  </React.Fragment>
                 ))}
+                {subtasks.length > 0 && (
+                  <SubtaskDropZone
+                    active={dragTarget === 'tail'}
+                    onDragEnter={() => setDragTarget('tail')}
+                    onDragLeave={() => setDragTarget((value) => value === 'tail' ? null : value)}
+                    onDrop={(sourceId) => onMoveTaskAfter(sourceId, subtasks[subtasks.length - 1].id, task.id)}
+                  />
+                )}
                 {isAddingSubtask && (
                   <div className="flex items-center gap-2 rounded-xl border soft-divider bg-[var(--panel-alt-bg)] px-2 py-1.5 transition-colors focus-within:border-[var(--accent)]">
                     <CornerDownRight size={13} className="shrink-0 text-[var(--text-muted)]" />
@@ -142,10 +228,44 @@ export const TaskModal: React.FC<{
               <Plus size={14} /> Add subtask
             </button>
           )}
+        </div>
 
-          <div className="space-y-5">
+        <div className="shrink-0 border-t soft-divider px-8 py-5">
+          <div className="mb-4 rounded-xl border border-dashed border-[var(--border-color)] px-3 py-2 text-[11px] text-[var(--text-muted)]"
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragTarget('detach');
+            }}
+            onDragLeave={() => setDragTarget((value) => value === 'detach' ? null : value)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragTarget(null);
+              const sourceId = event.dataTransfer.getData('taskId');
+              if (!sourceId) return;
+              detachSubtask(sourceId, { projectId: task.projectId, area: task.area });
+            }}
+            style={dragTarget === 'detach' ? { borderColor: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
+          >
+            Drop subtask here to make it a top-level task.
+          </div>
+
+          <div className="space-y-4">
             <div className="grid gap-5 sm:grid-cols-2">
-              <div>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragTarget('project');
+                }}
+                onDragLeave={() => setDragTarget((value) => value === 'project' ? null : value)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragTarget(null);
+                  const sourceId = event.dataTransfer.getData('taskId');
+                  if (!sourceId) return;
+                  detachSubtask(sourceId, { projectId: task.projectId });
+                }}
+                className={`rounded-lg ${dragTarget === 'project' ? 'bg-[var(--accent-soft)]' : ''}`}
+              >
                 <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Project</label>
                 <SmartSelect
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
@@ -158,7 +278,21 @@ export const TaskModal: React.FC<{
                 />
               </div>
 
-              <div>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragTarget('area');
+                }}
+                onDragLeave={() => setDragTarget((value) => value === 'area' ? null : value)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragTarget(null);
+                  const sourceId = event.dataTransfer.getData('taskId');
+                  if (!sourceId) return;
+                  detachSubtask(sourceId, { area: task.area });
+                }}
+                className={`rounded-lg ${dragTarget === 'area' ? 'bg-[var(--accent-soft)]' : ''}`}
+              >
                 <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Area</label>
                 <SmartSelect
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
@@ -206,7 +340,7 @@ export const TaskModal: React.FC<{
             </div>
 
             {task.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-2">
+              <div className="flex flex-wrap gap-1.5 pt-1">
                 {task.tags.map((tag) => (
                   <span key={tag} className="flex h-[22px] items-center rounded-md bg-[rgba(255,255,255,0.06)] px-2 text-[10.5px] font-bold text-[var(--text-secondary)]">
                     <span className="mr-0.5 opacity-40">#</span>{tag}
@@ -217,7 +351,6 @@ export const TaskModal: React.FC<{
           </div>
         </div>
 
-        {/* Footer - Seamless */}
         <div className="flex shrink-0 items-center justify-between px-8 pb-7 pt-4">
           <button type="button" onClick={() => { onDelete(task.id); onClose(); }} className="flex h-[32px] items-center gap-1.5 rounded-lg px-2 text-[11px] font-bold tracking-[0.04em] text-[var(--danger)] opacity-80 transition-all hover:bg-[rgba(255,0,0,0.1)] hover:opacity-100">
             <Trash2 size={13} strokeWidth={2.5} /> Delete
@@ -232,3 +365,25 @@ export const TaskModal: React.FC<{
     </div>
   );
 };
+
+const SubtaskDropZone: React.FC<{
+  active: boolean;
+  onDragEnter: () => void;
+  onDragLeave: () => void;
+  onDrop: (sourceId: string) => void;
+}> = ({ active, onDragEnter, onDragLeave, onDrop }) => (
+  <div
+    className="relative h-2"
+    onDragEnter={() => onDragEnter()}
+    onDragLeave={() => onDragLeave()}
+    onDragOver={(event) => event.preventDefault()}
+    onDrop={(event) => {
+      event.preventDefault();
+      onDragLeave();
+      const sourceId = event.dataTransfer.getData('taskId');
+      if (sourceId) onDrop(sourceId);
+    }}
+  >
+    <div className={`absolute inset-x-2 top-1/2 h-px -translate-y-1/2 transition-colors ${active ? 'bg-[var(--accent)]' : 'bg-transparent'}`} />
+  </div>
+);

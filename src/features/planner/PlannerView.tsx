@@ -43,10 +43,13 @@ export const PlannerView: React.FC<{
   onToggleStartOnToday: () => void;
 }> = ({ weekDays, tasks, projects, widthMode, selectedArea, hideEmptyProjects, compactEmptyDays, startOnToday, onUpdateTask, onMoveTaskBefore, onMoveTaskAfter, onToggleComplete, onAddTask, onAddProjectTask, onOpenTask, onOpenProject, onOpenDay, onToggleHideEmptyProjects, onToggleCompactEmptyDays, onToggleStartOnToday }) => {
   const weather = useWeather();
+  const [dragOverDay, setDragOverDay] = React.useState<string | null>(null);
+  const [dragOverProject, setDragOverProject] = React.useState<string | null>(null);
+  const parentTasks = tasks.filter((task) => task.parentId === null);
   const firstVisibleDate = weekDays[0]?.dateStr;
-  const carryForwardTasks = tasks.filter((task) => task.status !== 'completed' && task.dueDate && firstVisibleDate && task.dueDate < firstVisibleDate);
+  const carryForwardTasks = parentTasks.filter((task) => task.status !== 'completed' && task.dueDate && firstVisibleDate && task.dueDate < firstVisibleDate);
   const visibleProjects = hideEmptyProjects
-    ? projects.filter((project) => tasks.some((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)))
+    ? projects.filter((project) => parentTasks.some((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)))
     : projects;
 
   return (
@@ -85,16 +88,19 @@ export const PlannerView: React.FC<{
 
       <div className={`grid gap-4 ${weekDays.length === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-7'}`}>
         {weekDays.map((day) => {
-          const dayTasks = tasks.filter((task) => task.dueDate === day.dateStr);
+          const dayTasks = parentTasks.filter((task) => task.dueDate === day.dateStr);
           const isEmpty = dayTasks.length === 0;
           const weatherCode = weather[day.dateStr];
 
           return (
             <div
               key={day.dateStr}
-              className={`flex flex-col px-3 py-2 transition-all ${compactEmptyDays && isEmpty ? 'min-h-[180px] opacity-55' : 'min-h-[360px]'} ${day.isToday ? 'bg-[rgba(255,255,255,0.02)] rounded-2xl' : ''}`}
+              className={`flex flex-col px-3 py-2 transition-all ${compactEmptyDays && isEmpty ? 'min-h-[180px] opacity-55' : 'min-h-[360px]'} ${day.isToday ? 'bg-[rgba(255,255,255,0.02)] rounded-2xl' : ''} ${dragOverDay === day.dateStr ? 'rounded-2xl bg-[rgba(255,255,255,0.025)]' : ''}`}
+              onDragEnter={() => setDragOverDay(day.dateStr)}
+              onDragLeave={() => setDragOverDay((value) => value === day.dateStr ? null : value)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
+                setDragOverDay(null);
                 if (dayTasks.length > 0) return;
                 const id = event.dataTransfer.getData('taskId');
                 if (id) onUpdateTask(id, { dueDate: day.dateStr, status: 'scheduled' });
@@ -125,25 +131,14 @@ export const PlannerView: React.FC<{
                 )}
                 {dayTasks.map((task, index) => (
                   <React.Fragment key={task.id}>
-                    <button
+                    <PlannerTaskRow
                       key={task.id}
-                      type="button"
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.setData('taskId', task.id);
-                        event.dataTransfer.setData('context', 'reorder');
-                      }}
-                      onClick={() => onOpenTask(task)}
-                      className="group relative w-full rounded-lg px-1.5 py-1 text-left text-[12.5px] transition-colors hover:bg-[rgba(255,255,255,0.03)]"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className={`block flex-1 truncate ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
-                        {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] transition-opacity group-hover:opacity-0 opacity-60" />}
-                      </div>
-                      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center">
-                        <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[14px] w-[14px]" />
-                      </div>
-                    </button>
+                      task={task}
+                      layout="day"
+                      onUpdateTask={onUpdateTask}
+                      onOpenTask={onOpenTask}
+                      onToggleComplete={onToggleComplete}
+                    />
                     <PlannerDropZone
                       onDropTask={(id) => {
                         if (index === dayTasks.length - 1) onMoveTaskAfter(id, task.id);
@@ -172,13 +167,14 @@ export const PlannerView: React.FC<{
               </div>
               <div className="space-y-1">
                 {carryForwardTasks.slice(0, 8).map((task) => (
-                  <button key={task.id} type="button" draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.setData('context', 'reorder'); }} className="group relative flex w-full items-center justify-between px-1 py-1.5 text-left transition-colors hover:text-[var(--text-primary)]" onClick={() => onOpenTask(task)}>
-                    <span className={`block flex-1 truncate mr-2 text-[13px] ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
-                    <span className="shrink-0 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--text-muted)] transition-opacity group-hover:opacity-0">{task.dueDate?.split('-').slice(1).join('/')}</span>
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center">
-                      <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[14px] w-[14px]" />
-                    </div>
-                  </button>
+                  <PlannerTaskRow
+                    key={task.id}
+                    task={task}
+                    layout="carry-forward"
+                    onUpdateTask={onUpdateTask}
+                    onOpenTask={onOpenTask}
+                    onToggleComplete={onToggleComplete}
+                  />
                 ))}
               </div>
             </div>
@@ -187,23 +183,28 @@ export const PlannerView: React.FC<{
             <div
               key={project.id}
               className="px-2 py-2"
+              onDragEnter={() => setDragOverProject(project.id)}
+              onDragLeave={() => setDragOverProject((value) => value === project.id ? null : value)}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
+                setDragOverProject(null);
                 const id = event.dataTransfer.getData('taskId');
                 if (id) onUpdateTask(id, { projectId: project.id });
               }}
             >
-              <button type="button" className="mb-3 truncate text-left text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]" onClick={() => onOpenProject(project.id)}>
+              <button type="button" className={`mb-3 truncate text-left text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-primary)] ${dragOverProject === project.id ? 'opacity-90' : ''}`} onClick={() => onOpenProject(project.id)}>
                 {project.name}
               </button>
               <div className="space-y-1">
-                {tasks.filter((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)).slice(0, 8).map((task) => (
-                  <button key={task.id} type="button" draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.setData('context', 'reorder'); }} className="group relative block w-full truncate px-1 py-1.5 text-left text-[13px] transition-colors hover:text-[var(--text-primary)]" onClick={() => onOpenTask(task)}>
-                    <span className={`block truncate pr-3 ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>{task.title}</span>
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center">
-                      <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[14px] w-[14px]" />
-                    </div>
-                  </button>
+                {parentTasks.filter((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)).slice(0, 8).map((task) => (
+                  <PlannerTaskRow
+                    key={task.id}
+                    task={task}
+                    layout="project"
+                    onUpdateTask={onUpdateTask}
+                    onOpenTask={onOpenTask}
+                    onToggleComplete={onToggleComplete}
+                  />
                 ))}
                 <GhostItem placeholder="Add to list..." onAdd={(title) => onAddProjectTask(title, project.id)} className="mt-1 opacity-40" />
               </div>
@@ -236,7 +237,102 @@ const PlannerDropZone: React.FC<{
         if (id) onDropTask(id);
       }}
     >
-      <div className={`absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors ${isDragOver ? 'bg-[var(--accent)]' : 'bg-transparent'}`} />
+      <div className={`absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors ${isDragOver ? 'bg-[var(--accent)]/80' : 'bg-transparent'}`} />
+    </div>
+  );
+};
+
+const PlannerTaskRow: React.FC<{
+  task: Task;
+  layout: 'day' | 'carry-forward' | 'project';
+  onUpdateTask: (id: string, updates: Partial<Task>) => void;
+  onOpenTask: (task: Task) => void;
+  onToggleComplete: (id: string) => void;
+}> = ({ task, layout, onUpdateTask, onOpenTask, onToggleComplete }) => {
+  const [isEditingTitle, setIsEditingTitle] = React.useState(false);
+  const [draftTitle, setDraftTitle] = React.useState(task.title);
+  const clickTimeoutRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    setDraftTitle(task.title);
+  }, [task.title]);
+
+  React.useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) window.clearTimeout(clickTimeoutRef.current);
+    };
+  }, []);
+
+  const handleDragStart = (event: React.DragEvent) => {
+    event.dataTransfer.setData('taskId', task.id);
+    event.dataTransfer.setData('context', 'reorder');
+    event.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleRowClick = () => {
+    if (isEditingTitle) return;
+    if (clickTimeoutRef.current) window.clearTimeout(clickTimeoutRef.current);
+    clickTimeoutRef.current = window.setTimeout(() => {
+      setDraftTitle(task.title);
+      setIsEditingTitle(true);
+      clickTimeoutRef.current = null;
+    }, 180);
+  };
+
+  const handleRowDoubleClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (clickTimeoutRef.current) {
+      window.clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    onOpenTask(task);
+  };
+
+  const commitTitleEdit = () => {
+    const nextTitle = draftTitle.trim();
+    if (nextTitle && nextTitle !== task.title) onUpdateTask(task.id, { title: nextTitle });
+    setDraftTitle(nextTitle || task.title);
+    setIsEditingTitle(false);
+  };
+
+  return (
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      onClick={handleRowClick}
+      onDoubleClick={handleRowDoubleClick}
+      className={`group flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)] ${layout === 'day' ? 'min-h-[28px]' : 'min-h-[26px]'}`}
+    >
+      <span onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
+        <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[16px] w-[16px]" />
+      </span>
+      {isEditingTitle ? (
+        <input
+          autoFocus
+          value={draftTitle}
+          onChange={(event) => setDraftTitle(event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onBlur={commitTitleEdit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commitTitleEdit();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setDraftTitle(task.title);
+              setIsEditingTitle(false);
+            }
+          }}
+          className="w-full rounded bg-transparent text-[12.5px] text-[var(--text-primary)] outline-none ring-1 ring-[var(--focus)]"
+        />
+      ) : (
+        <span className={`truncate text-[12.5px] ${task.status === 'completed' ? 'text-[var(--text-muted)] line-through' : 'text-[var(--text-secondary)]'}`}>
+          {task.title}
+        </span>
+      )}
+      {layout !== 'day' && <AlignLeft size={12} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-60" />}
     </div>
   );
 };

@@ -333,6 +333,8 @@ export default function App() {
           onDelete={deleteTask}
           onToggleStar={toggleStar}
           onToggleComplete={toggleComplete}
+          onMoveTaskBefore={moveTaskBefore}
+          onMoveTaskAfter={moveTaskAfter}
           onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id)}
           onOpenTask={setTaskToEditInModal}
         />

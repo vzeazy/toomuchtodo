@@ -72,6 +72,29 @@ Nuances:
 - Advanced import still supports Inbox/project scope controls and all import modes.
 - Build verified after refinements: `npm run build` (pass).
 
+### 2026-03-02 - Drag/drop + off-canvas task detail refinement completed
+
+- Implemented off-canvas subtask drag behavior in `TaskModal`:
+  - subtasks are now draggable
+  - between-subtask drop zones support reorder inside the parent task
+  - added detach/drop targets to convert a subtask into top-level task flow
+  - added project/area drop-aware zones in the bottom controls section for seamless "drag out of subtasks" conversion
+- Refined drag placement hints across list views:
+  - `TaskRow` and `OutlineTaskRow` now use subtler insertion/nesting hints (minimal bars/markers instead of heavy glow styles)
+  - planner drop line styling softened for cleaner placement cues
+  - planner day/project columns now show lightweight hover-state hints while dragging
+- Updated off-canvas detail layout:
+  - notes now support dynamic preview with auto-collapse on long content plus simple expand/collapse
+  - notes editing remains one click away
+  - subtasks remain directly below notes
+  - project/area/parent/due/tags controls are grouped at the bottom section of the panel
+
+Nuances:
+
+- Off-canvas reorder currently targets sibling ordering under the same parent task for predictability.
+- Drag-to-project/area in off-canvas detaches the dropped subtask (sets parent to null) and applies scope updates without requiring extra dialogs.
+- Build verified after refinement pass: `npm run build` (pass).
+
 ---
 
 ## What exists today (codebase findings)
