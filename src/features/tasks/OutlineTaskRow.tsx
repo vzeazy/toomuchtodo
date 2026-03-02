@@ -172,11 +172,6 @@ export const OutlineTaskRow: React.FC<{
       setIsAddingSubtask(keepOpen);
     };
     const subtasks = allTasks.filter((item) => item.parentId === task.id);
-    const dropModeLabel = dropMode === 'before'
-      ? '↑ Insert above'
-      : dropMode === 'after'
-        ? '↓ Insert below'
-        : '→ Nest under';
 
     const handleDragStart = (event: React.DragEvent) => {
       event.dataTransfer.setData('taskId', task.id);
@@ -194,8 +189,16 @@ export const OutlineTaskRow: React.FC<{
           event.preventDefault();
           if (!hasTaskDragPayload(event.dataTransfer)) return;
           const rect = event.currentTarget.getBoundingClientRect();
-          const offsetY = event.clientY - rect.top;
-          const nextMode = offsetY < rect.height * 0.25 ? 'before' : offsetY > rect.height * 0.75 ? 'after' : 'inside';
+          const ratio = (event.clientY - rect.top) / rect.height;
+          let nextMode: 'before' | 'inside' | 'after';
+          if (hasChildren && !task.collapsed) {
+            // Expanded parent: tiny top strip = "before", everything else = "inside" (add to this group)
+            // because children are already visible below — dropping in the body means "add to me"
+            nextMode = ratio < 0.18 ? 'before' : 'inside';
+          } else {
+            // Collapsed parent or leaf: three equal zones
+            nextMode = ratio < 0.28 ? 'before' : ratio > 0.72 ? 'after' : 'inside';
+          }
           setDropMode(nextMode);
           setIsOver(true);
         }}
@@ -218,31 +221,25 @@ export const OutlineTaskRow: React.FC<{
           }
           setDropMode('inside');
         }}
-        className={`group relative rounded-2xl transition-all outline-none hover:bg-[rgba(255,255,255,0.018)] focus:bg-[rgba(255,255,255,0.025)] ${isContextAncestor ? 'opacity-75' : ''} ${isOver && dropMode === 'inside' ? 'bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/50' : isOver ? 'bg-[rgba(255,255,255,0.03)]' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
+        className={`group relative rounded-2xl transition-all outline-none hover:bg-[rgba(255,255,255,0.018)] focus:bg-[rgba(255,255,255,0.025)] ${isContextAncestor ? 'opacity-75' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
       >
-        {/* drop intent label */}
-        {isOver && (
-          <div className="pointer-events-none absolute right-2 top-1/2 z-30 -translate-y-1/2 rounded-full bg-[var(--accent)] px-3 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-white shadow-lg">
-            {dropModeLabel}
-          </div>
-        )}
-        {/* insert-above line with depth dot */}
+        {/* BEFORE: top gradient wash + sharp top edge line — visually occupies the top of the row */}
         {isOver && dropMode === 'before' && (
           <>
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-[3px] rounded-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px` }} />
-            <div className="pointer-events-none absolute top-[-4px] z-20 h-[10px] w-[10px] -translate-y-0 rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel-bg)]" style={{ left: `${16 + depth * 24}px` }} />
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1/2 rounded-t-2xl bg-gradient-to-b from-[var(--accent)]/20 to-transparent" />
+            <div className="pointer-events-none absolute top-0 z-20 h-[3px] rounded-r-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px`, right: 0 }} />
           </>
         )}
-        {/* insert-after line with depth dot */}
+        {/* INSIDE: full row tint — you're hovering "in" the middle of the item → become a child */}
+        {isOver && dropMode === 'inside' && (
+          <div className="pointer-events-none absolute inset-0 z-10 rounded-2xl bg-[var(--accent)]/12 ring-2 ring-inset ring-[var(--accent)]/40" />
+        )}
+        {/* AFTER: bottom gradient wash + sharp bottom edge line */}
         {isOver && dropMode === 'after' && (
           <>
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-[3px] rounded-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px` }} />
-            <div className="pointer-events-none absolute bottom-[-4px] z-20 h-[10px] w-[10px] rounded-full bg-[var(--accent)] ring-2 ring-[var(--panel-bg)]" style={{ left: `${16 + depth * 24}px` }} />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-1/2 rounded-b-2xl bg-gradient-to-t from-[var(--accent)]/20 to-transparent" />
+            <div className="pointer-events-none absolute bottom-0 z-20 h-[3px] rounded-r-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24}px`, right: 0 }} />
           </>
-        )}
-        {/* nest-under: left-edge accent bar */}
-        {isOver && dropMode === 'inside' && (
-          <div className="pointer-events-none absolute bottom-1 top-1 z-20 w-[3px] rounded-full bg-[var(--accent)]" style={{ left: `${16 + depth * 24 - 2}px` }} />
         )}
         <div className="relative flex items-center gap-2 px-4 py-2" style={{ paddingLeft: `${16 + (depth * 24)}px` }}>
           <div className="absolute top-1/2 -translate-y-1/2 cursor-grab text-[var(--text-muted)]" style={{ left: `${depth * 24 - 10}px` }}>
