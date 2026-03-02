@@ -1,6 +1,12 @@
 import React, { useMemo } from 'react';
+import { PictureInPicture2 } from 'lucide-react';
 import { Project, Task, TaskListMode, AppView } from '../../types';
 import { TaskListView } from './TaskListView';
+import {
+  TaskPanelPictureInPictureBridge,
+  TaskPanelPictureInPictureBridgeHandle,
+} from './TaskPanelPictureInPictureBridge';
+import { getProjectSubtreeIds } from '../../lib/projectTree';
 import { collectTaskIdsWithAncestors, getTaskDescendantIds } from './taskTree';
 
 export interface PanelState {
@@ -15,10 +21,11 @@ export const TaskPanelWrapper: React.FC<{
   tasks: Task[];
   projects: Project[];
   settings: { taskListMode: TaskListMode;[key: string]: any };
+  themeVariables: Record<string, string>;
   selectedArea: string | null;
   expandedTaskId: string | null;
   setExpandedTaskId: (id: string | null) => void;
-  addTask: (title: string, status: string, area: string, projectId: string | null, dueDate: string | null, forceLast?: boolean, parentId?: string | null) => void;
+  addTask: (title: string, status: string, area: string, projectId: string | null, dueDate: string | null, forceLast?: boolean, parentId?: string | null, dayPart?: 'morning' | 'afternoon' | 'evening' | null) => Task;
   setTaskListMode: (mode: TaskListMode) => void;
   toggleStar: (id: string) => void;
   toggleComplete: (id: string) => void;
@@ -38,6 +45,7 @@ export const TaskPanelWrapper: React.FC<{
   tasks,
   projects,
   settings,
+  themeVariables,
   selectedArea,
   expandedTaskId,
   setExpandedTaskId,
@@ -57,6 +65,10 @@ export const TaskPanelWrapper: React.FC<{
   onClose,
   isSingle,
 }) => {
+    const [isPictureInPictureOpen, setIsPictureInPictureOpen] = React.useState(false);
+    const pictureInPictureBridgeRef = React.useRef<TaskPanelPictureInPictureBridgeHandle>(null);
+    const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
+
     const filteredTasks = useMemo(() => {
       let result = tasks;
       if (selectedArea) result = result.filter((task) => task.area === selectedArea);
@@ -67,12 +79,15 @@ export const TaskPanelWrapper: React.FC<{
       else if (panel.view !== 'all' && panel.view !== 'planner' && panel.view !== 'settings' && panel.view !== 'search') {
         result = result.filter((task) => task.status === panel.view);
       }
-      if (panel.projectId) result = result.filter((task) => task.projectId === panel.projectId);
+      if (panel.projectId) {
+        const projectIds = getProjectSubtreeIds(panel.projectId, projects);
+        result = result.filter((task) => task.projectId && projectIds.has(task.projectId));
+      }
       if (!settings.showCompletedTasks && panel.view !== 'completed') {
         result = result.filter((task) => task.status !== 'completed');
       }
       return result;
-    }, [tasks, panel.view, panel.dateStr, panel.projectId, selectedArea, settings.showCompletedTasks]);
+    }, [tasks, panel.view, panel.dateStr, panel.projectId, projects, selectedArea, settings.showCompletedTasks]);
 
     const matchedTaskIds = useMemo(() => new Set(filteredTasks.map((task) => task.id)), [filteredTasks]);
 
@@ -128,10 +143,11 @@ export const TaskPanelWrapper: React.FC<{
         itemCount={filteredTasks.length}
         matchedTaskIds={matchedTaskIds}
         taskListMode={settings.taskListMode}
+        groupDayViewByPart={Boolean(settings.groupDayViewByPart)}
         backLabel={panel.view === 'day' ? 'Back to week' : undefined}
         onExpandTask={setExpandedTaskId}
-        onAddTask={(title) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null)}
-        onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id)}
+        onAddTask={(title, dayPart) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null, false, null, panel.view === 'day' ? (dayPart || 'morning') : null)}
+        onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
         onTaskListModeChange={setTaskListMode}
         onToggleStar={toggleStar}
         onToggleComplete={toggleComplete}
@@ -147,24 +163,96 @@ export const TaskPanelWrapper: React.FC<{
       />
     );
 
+    const handleTogglePictureInPicture = async () => {
+      if (!isPictureInPictureSupported) return;
+      if (isPictureInPictureOpen) {
+        pictureInPictureBridgeRef.current?.close();
+        return;
+      }
+      await pictureInPictureBridgeRef.current?.open();
+    };
+
+    const pictureInPicturePlaceholder = (
+      <div className="flex min-h-[360px] items-center justify-center px-6">
+        <div className="panel-surface max-w-sm rounded-[28px] px-6 py-7 text-center">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--accent)]">Always On Top</div>
+          <h2 className="mt-3 text-[22px] font-medium tracking-[-0.04em] text-[var(--text-primary)]">{headerTitle}</h2>
+          <p className="mt-2 text-[12px] leading-6 text-[var(--text-secondary)]">
+            This list is live in its Picture-in-Picture window. Changes still sync with the main app instantly.
+          </p>
+          <button
+            type="button"
+            onClick={handleTogglePictureInPicture}
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--accent-contrast)] transition-transform hover:scale-[1.02]"
+          >
+            Return To Panel
+          </button>
+        </div>
+      </div>
+    );
+
+    const popOutAction = (
+      <button
+        type="button"
+        onClick={handleTogglePictureInPicture}
+        disabled={!isPictureInPictureSupported}
+        className={`absolute top-0 z-20 inline-flex h-9 items-center justify-center gap-2 rounded-full border soft-divider panel-muted px-3 transition-colors ${onClose ? 'right-10' : 'right-0'} ${isPictureInPictureSupported ? 'text-[var(--text-muted)] hover:text-[var(--text-primary)]' : 'cursor-not-allowed opacity-40'}`}
+        title={isPictureInPictureSupported ? (isPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window') : 'Always-on-top view is not supported in this browser'}
+        aria-label={isPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window'}
+      >
+        <PictureInPicture2 className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
+          {isPictureInPictureSupported ? 'Pop Out' : 'No PiP'}
+        </span>
+      </button>
+    );
+
+    const body = isPictureInPictureOpen ? pictureInPicturePlaceholder : child;
+
     if (isSingle) {
-      return child;
+      return (
+        <>
+          <TaskPanelPictureInPictureBridge
+            ref={pictureInPictureBridgeRef}
+            title={`${headerTitle} • Too Much Todo`}
+            themeVariables={themeVariables}
+            onOpenChange={setIsPictureInPictureOpen}
+          >
+            {child}
+          </TaskPanelPictureInPictureBridge>
+          <div className="relative">
+            {popOutAction}
+            {body}
+          </div>
+        </>
+      );
     }
 
     return (
-      <div className="relative h-full flex flex-col flex-1 shrink-0 min-w-[320px] max-w-[800px] border-r soft-divider pr-8 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="absolute right-0 top-0 p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] z-10 transition-colors"
-            title="Close Panel"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-        {child}
-      </div>
+      <>
+        <TaskPanelPictureInPictureBridge
+          ref={pictureInPictureBridgeRef}
+          title={`${headerTitle} • Too Much Todo`}
+          themeVariables={themeVariables}
+          onOpenChange={setIsPictureInPictureOpen}
+        >
+          {child}
+        </TaskPanelPictureInPictureBridge>
+        <div className="relative h-full flex flex-col flex-1 shrink-0 min-w-[320px] max-w-[800px] border-r soft-divider pr-8 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+          {popOutAction}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="absolute right-0 top-0 p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] z-10 transition-colors"
+              title="Close Panel"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+          {body}
+        </div>
+      </>
     );
   };

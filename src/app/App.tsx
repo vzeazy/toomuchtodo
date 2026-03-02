@@ -19,19 +19,25 @@ import {
   Keyboard,
   LayoutList,
   List,
+  PanelsTopLeft,
   Maximize2,
   Minimize2,
+  MoreHorizontal,
   Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
   Star,
+  Trash2,
 
 } from 'lucide-react';
 import { SidebarItem } from '../components/SidebarItem';
 import { ShortcutsModal } from '../components/ShortcutsModal';
 import { copyTextToClipboard } from '../lib/clipboard';
 import { formatDateKey, getWeekDays, getWeekRangeLabel } from '../lib/date';
+import { flattenProjectTree, getParentTaskCountsByProject } from '../lib/projectTree';
 import {
   createTaskListExchangePayload,
   createTaskListMarkdown,
@@ -84,6 +90,7 @@ export default function App() {
     toggleComplete,
     addProject,
     updateProject,
+    deleteProject,
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,
@@ -100,6 +107,7 @@ export default function App() {
     toggleHideEmptyProjectsInPlanner,
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
+    toggleGroupDayViewByPart,
   } = useAppStore();
 
   const [currentView, setCurrentView] = useState<AppView>('planner');
@@ -114,9 +122,16 @@ export default function App() {
   const [taskToEditInModal, setTaskToEditInModal] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [colorPopoverProjectId, setColorPopoverProjectId] = useState<string | null>(null);
+  const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
+  const themeVariables = useMemo(() => getThemeVariables(activeTheme), [activeTheme]);
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((prev) => !prev);
+    setShowAreaMenu(false);
+    setProjectMenuId(null);
+  }, []);
 
   const handleViewSelect = useCallback((event: React.MouseEvent | undefined, view: AppView, projectId: string | null = null, dateStr: string | null = null) => {
     const isMulti = event && (event.shiftKey || event.metaKey || event.ctrlKey);
@@ -197,26 +212,11 @@ export default function App() {
 
 
 
-  const projectTree = useMemo(() => {
-    const byParent = new Map<string | null, typeof projects>();
-    for (const project of projects) {
-      const parentId = project.parentId || null;
-      const list = byParent.get(parentId) || [];
-      list.push(project);
-      byParent.set(parentId, list);
-    }
-
-    const ordered: Array<{ project: typeof projects[number]; depth: number }> = [];
-    const visit = (parentId: string | null, depth: number) => {
-      for (const project of byParent.get(parentId) || []) {
-        ordered.push({ project, depth });
-        visit(project.id, depth + 1);
-      }
-    };
-
-    visit(null, 0);
-    return ordered;
-  }, [projects]);
+  const projectTree = useMemo(() => flattenProjectTree(projects), [projects]);
+  const projectParentTaskCounts = useMemo(
+    () => getParentTaskCountsByProject(projects, tasks, selectedArea),
+    [projects, selectedArea, tasks]
+  );
 
 
 
@@ -259,6 +259,12 @@ export default function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setShowCommandPalette((prev) => !prev);
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        toggleSidebarCollapsed();
         return;
       }
 
@@ -325,19 +331,30 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [addTask, selectedArea]);
+  }, [addTask, selectedArea, toggleSidebarCollapsed]);
 
   useEffect(() => {
-    if (!colorPopoverProjectId) return;
+    if (!projectMenuId) return;
 
-    const handleClickOutside = () => setColorPopoverProjectId(null);
+    const handleClickOutside = () => setProjectMenuId(null);
     document.addEventListener('mousedown', handleClickOutside);
 
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [colorPopoverProjectId]);
+  }, [projectMenuId]);
+
+  const handleDeleteProject = useCallback((projectId: string) => {
+    deleteProject(projectId);
+    setProjectMenuId(null);
+    setAdditionalPanels((prev) => prev.filter((panel) => panel.projectId !== projectId));
+
+    if (selectedProjectId === projectId) {
+      setSelectedProjectId(null);
+      if (currentView === 'all') setCurrentView('next');
+    }
+  }, [currentView, deleteProject, selectedProjectId]);
 
   return (
-    <div className="app-frame flex h-screen flex-col select-none" style={getThemeVariables(activeTheme)}>
+    <div className="app-frame flex h-screen flex-col select-none" style={themeVariables}>
       {showShortcutsModal && <ShortcutsModal onClose={() => setShowShortcutsModal(false)} />}
       <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
 
@@ -361,6 +378,15 @@ export default function App() {
 
       <header className="topbar-shell z-[100] flex h-14 shrink-0 items-center justify-between border-b soft-divider px-5">
         <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            className="panel-muted flex h-9 w-9 items-center justify-center rounded-xl border soft-divider text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+            title={sidebarCollapsed ? 'Show sidebar (Ctrl/Cmd + B)' : 'Hide sidebar (Ctrl/Cmd + B)'}
+            aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
           <div className="flex items-baseline gap-3">
             <div className="text-[14px] font-bold uppercase tracking-[0.14em] text-[var(--text-primary)]">Too Much Todo</div>
             <div className="section-kicker text-[10px] font-medium uppercase text-[var(--text-muted)]">Focus System</div>
@@ -451,6 +477,20 @@ export default function App() {
             </div>
           )}
 
+          {currentView === 'day' && (
+            <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
+              <button
+                type="button"
+                onClick={toggleGroupDayViewByPart}
+                className={`flex h-[30px] items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium transition-all ${settings.groupDayViewByPart ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                title="Toggle day blocks"
+              >
+                <PanelsTopLeft size={13} />
+                <span>Blocks</span>
+              </button>
+            </div>
+          )}
+
           <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
 
           {/* Group 2: Static View Toggles */}
@@ -508,7 +548,7 @@ export default function App() {
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="sidebar-shell flex w-72 shrink-0 flex-col border-r soft-divider px-4 py-5">
+        <aside className={`sidebar-shell shrink-0 overflow-hidden transition-[width,padding,opacity,border-color] duration-200 ${sidebarCollapsed ? 'w-0 border-r-0 px-0 py-0 opacity-0' : 'flex w-72 flex-col border-r soft-divider px-4 py-5 opacity-100'}`}>
           <div className="mb-4 px-1">
             <div className="panel-muted flex items-center gap-2 rounded-2xl border soft-divider px-3 py-3">
               <Search size={15} className="text-[var(--text-muted)]" />
@@ -549,76 +589,86 @@ export default function App() {
                   key={project.id}
                   icon={Folder}
                   label={project.name}
+                  count={projectParentTaskCounts.get(project.id) || 0}
                   iconColor={project.color}
                   indent={depth}
                   active={selectedProjectId === project.id || additionalPanels.some(p => p.projectId === project.id)}
                   onClick={(e) => handleViewSelect(e, 'all', project.id)}
                   onDrop={(id) => updateTask(id, { projectId: project.id })}
                   actions={
-                    <>
+                    <div className="relative" onMouseDown={(event) => event.stopPropagation()}>
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          const name = prompt(`Child project inside "${project.name}":`);
-                          if (name) addProject(name, project.id);
+                          setProjectMenuId((current) => current === project.id ? null : project.id);
                         }}
-                        className="rounded p-1 text-[var(--text-muted)] opacity-0 transition-all hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-primary)] group-hover:opacity-100"
-                        title="Add nested project"
+                        className={`rounded p-1 text-[var(--text-muted)] opacity-0 transition-all hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-primary)] group-hover:opacity-100 ${projectMenuId === project.id ? 'opacity-100' : ''}`}
+                        title="Project actions"
                       >
-                        <Plus size={12} />
+                        <MoreHorizontal size={12} />
                       </button>
-                      <div className="relative" onMouseDown={(event) => event.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setColorPopoverProjectId((current) => current === project.id ? null : project.id);
-                          }}
-                          className={`rounded p-1 text-[var(--text-muted)] opacity-0 transition-all hover:bg-[rgba(255,255,255,0.04)] hover:text-[var(--text-primary)] group-hover:opacity-100 ${colorPopoverProjectId === project.id ? 'opacity-100' : ''}`}
-                          title="Change project color"
-                        >
-                          <Palette size={12} style={project.color ? { color: project.color } : undefined} />
-                        </button>
 
-                        {colorPopoverProjectId === project.id && (
-                          <div
-                            className="panel-surface absolute right-0 top-8 z-[80] w-40 rounded-2xl p-2"
-                            onClick={(event) => event.stopPropagation()}
+                      {projectMenuId === project.id && (
+                        <div
+                          className="panel-surface absolute right-0 top-8 z-[80] w-40 rounded-2xl p-2"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">Project Menu</div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const name = prompt(`Child project inside "${project.name}":`);
+                              if (name) addProject(name, project.id);
+                              setProjectMenuId(null);
+                            }}
+                            className="mb-1 flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-[12px] text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.04)]"
                           >
-                            <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">Folder Color</div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                updateProject(project.id, { color: undefined });
-                                setColorPopoverProjectId(null);
-                              }}
-                              className="mb-2 flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-[12px] text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.04)]"
-                            >
-                              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[var(--border-color)] bg-[var(--panel-alt-bg)]">
-                                <Folder size={10} className="text-[var(--text-muted)]" />
-                              </span>
-                              <span>Default</span>
-                            </button>
-                            <div className="grid grid-cols-4 gap-2">
-                              {PROJECT_COLORS.map((color) => (
-                                <button
-                                  key={color}
-                                  type="button"
-                                  onClick={() => {
-                                    updateProject(project.id, { color });
-                                    setColorPopoverProjectId(null);
-                                  }}
-                                  className={`h-7 rounded-lg border transition-transform hover:scale-[1.05] ${project.color === color ? 'border-white/60' : 'border-white/10'}`}
-                                  style={{ background: color }}
-                                  aria-label={`Set project color ${color}`}
-                                />
-                              ))}
-                            </div>
+                            <Plus size={12} className="text-[var(--text-muted)]" />
+                            <span>Add nested project</span>
+                          </button>
+                          <div className="my-2 h-px bg-white/5" />
+                          <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">Folder Color</div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateProject(project.id, { color: undefined });
+                              setProjectMenuId(null);
+                            }}
+                            className="mb-2 flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-[12px] text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.04)]"
+                          >
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[var(--border-color)] bg-[var(--panel-alt-bg)]">
+                              <Folder size={10} className="text-[var(--text-muted)]" />
+                            </span>
+                            <span>Default</span>
+                          </button>
+                          <div className="grid grid-cols-4 gap-2">
+                            {PROJECT_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                type="button"
+                                onClick={() => {
+                                  updateProject(project.id, { color });
+                                  setProjectMenuId(null);
+                                }}
+                                className={`h-7 rounded-lg border transition-transform hover:scale-[1.05] ${project.color === color ? 'border-white/60' : 'border-white/10'}`}
+                                style={{ background: color }}
+                                aria-label={`Set project color ${color}`}
+                              />
+                            ))}
                           </div>
-                        )}
-                      </div>
-                    </>
+                          <div className="my-2 h-px bg-white/5" />
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(project.id)}
+                            className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-[12px] text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]/20"
+                          >
+                            <Trash2 size={12} />
+                            <span>Delete project</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   }
                 />
               ))}
@@ -711,6 +761,7 @@ export default function App() {
                   tasks={tasks}
                   projects={projects}
                   settings={settings}
+                  themeVariables={themeVariables}
                   selectedArea={selectedArea}
                   expandedTaskId={expandedTaskId}
                   setExpandedTaskId={setExpandedTaskId}
@@ -736,6 +787,7 @@ export default function App() {
                     tasks={tasks}
                     projects={projects}
                     settings={settings}
+                    themeVariables={themeVariables}
                     selectedArea={selectedArea}
                     expandedTaskId={expandedTaskId}
                     setExpandedTaskId={setExpandedTaskId}
@@ -758,6 +810,7 @@ export default function App() {
                       tasks={tasks}
                       projects={projects}
                       settings={settings}
+                      themeVariables={themeVariables}
                       selectedArea={selectedArea}
                       expandedTaskId={expandedTaskId}
                       setExpandedTaskId={setExpandedTaskId}

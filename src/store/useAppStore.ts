@@ -12,6 +12,7 @@ import {
   TaskListImportMode,
   TaskListMode,
   TaskStatus,
+  DayPart,
   ThemeDefinition,
 } from '../types';
 
@@ -45,6 +46,7 @@ const INITIAL_TASKS: Task[] = [
     projectId: null,
     area: 'Work',
     dueDate: null,
+    dayPart: null,
     parentId: null,
     collapsed: false,
     createdAt: Date.now(),
@@ -59,6 +61,7 @@ const INITIAL_TASKS: Task[] = [
     projectId: null,
     area: 'Work',
     dueDate: null,
+    dayPart: null,
     parentId: null,
     collapsed: false,
     createdAt: Date.now(),
@@ -73,6 +76,7 @@ const INITIAL_TASKS: Task[] = [
     projectId: 'proj-1',
     area: 'Work',
     dueDate: new Date().toISOString().slice(0, 10),
+    dayPart: 'morning',
     parentId: null,
     collapsed: false,
     createdAt: Date.now(),
@@ -88,6 +92,7 @@ const INITIAL_SETTINGS: AppSettings = {
   hideEmptyProjectsInPlanner: false,
   compactEmptyDaysInPlanner: false,
   startPlannerOnToday: false,
+  groupDayViewByPart: false,
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -101,6 +106,7 @@ const normalizeTask = (task: Partial<Task>): Task => ({
   projectId: typeof task.projectId === 'string' ? task.projectId : null,
   area: typeof task.area === 'string' ? task.area : 'Personal',
   dueDate: typeof task.dueDate === 'string' ? task.dueDate : null,
+  dayPart: task.dayPart === 'morning' || task.dayPart === 'afternoon' || task.dayPart === 'evening' ? task.dayPart : null,
   parentId: typeof task.parentId === 'string' ? task.parentId : null,
   collapsed: typeof task.collapsed === 'boolean' ? task.collapsed : false,
   createdAt: typeof task.createdAt === 'number' ? task.createdAt : Date.now(),
@@ -139,6 +145,7 @@ const getInitialState = (): AppStateData => {
           hideEmptyProjectsInPlanner: parsed.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
           compactEmptyDaysInPlanner: parsed.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
           startPlannerOnToday: parsed.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
+          groupDayViewByPart: parsed.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
         },
         themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
       };
@@ -183,6 +190,7 @@ export const useAppStore = () => {
     dueDate: string | null = null,
     atStart = false,
     parentId: string | null = null,
+    dayPart: DayPart | null = null,
   ) => {
     const newTask: Task = {
       id: uid('task'),
@@ -193,6 +201,7 @@ export const useAppStore = () => {
       projectId,
       area,
       dueDate,
+      dayPart,
       parentId,
       collapsed: false,
       createdAt: Date.now(),
@@ -414,6 +423,10 @@ export const useAppStore = () => {
     setState((prev) => ({ ...prev, settings: { ...prev.settings, startPlannerOnToday: !prev.settings.startPlannerOnToday } }));
   }, []);
 
+  const toggleGroupDayViewByPart = useCallback(() => {
+    setState((prev) => ({ ...prev, settings: { ...prev.settings, groupDayViewByPart: !prev.settings.groupDayViewByPart } }));
+  }, []);
+
   const setTaskParent = useCallback((taskId: string, parentId: string | null) => {
     setState((prev) => ({ ...prev, tasks: updateTaskParent(prev.tasks, taskId, parentId) }));
   }, []);
@@ -473,5 +486,6 @@ export const useAppStore = () => {
     toggleHideEmptyProjectsInPlanner,
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
+    toggleGroupDayViewByPart,
   };
 };

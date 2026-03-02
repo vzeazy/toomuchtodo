@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { GhostItem } from '../../components/GhostItem';
-import { Project, Task, TaskListMode } from '../../types';
+import { DayPart, Project, Task, TaskListMode } from '../../types';
 import { OutlineTaskRow } from './OutlineTaskRow';
 import { TaskRow } from './TaskRow';
 import { buildVisibleTaskTree, canReparentTask } from './taskTree';
@@ -18,9 +18,10 @@ export const TaskListView: React.FC<{
   itemCount: number;
   matchedTaskIds: Set<string>;
   taskListMode: TaskListMode;
+  groupDayViewByPart: boolean;
   backLabel?: string;
   onExpandTask: (id: string | null) => void;
-  onAddTask: (title: string) => void;
+  onAddTask: (title: string, dayPart?: DayPart | null) => void;
   onAddSubtask: (parentTask: Task, title: string) => void;
   onTaskListModeChange: (mode: TaskListMode) => void;
   onToggleStar: (id: string) => void;
@@ -46,6 +47,7 @@ export const TaskListView: React.FC<{
   itemCount,
   matchedTaskIds,
   taskListMode,
+  groupDayViewByPart,
   backLabel,
   onExpandTask,
   onAddTask,
@@ -86,6 +88,20 @@ export const TaskListView: React.FC<{
 
     const outlineRows = useMemo(() => buildVisibleTaskTree(tasks, matchedTaskIds), [matchedTaskIds, tasks]);
     const isScheduledView = currentView === 'scheduled';
+    const isGroupedDayView = currentView === 'day' && groupDayViewByPart;
+
+    const dayPartSections = useMemo(() => {
+      const order: Array<{ key: DayPart; label: string }> = [
+        { key: 'morning', label: 'Morning' },
+        { key: 'afternoon', label: 'Afternoon' },
+        { key: 'evening', label: 'Evening' },
+      ];
+      return order.map((section) => ({
+        ...section,
+        listTasks: visibleListTasks.filter((task) => task.dayPart === section.key),
+        outlineRows: outlineRows.filter((row) => row.task.dayPart === section.key),
+      }));
+    }, [outlineRows, visibleListTasks]);
 
     const scheduledListGroups = useMemo(() => {
       if (!isScheduledView || taskListMode !== 'list') return [];
@@ -200,6 +216,10 @@ export const TaskListView: React.FC<{
       onMoveTaskAfter(sourceId, targetId, targetId);
     };
 
+    const assignTaskToDayPart = (taskId: string, dayPart: DayPart) => {
+      onUpdateTask(taskId, { dayPart });
+    };
+
     const toggleGroupCollapsed = (dateKey: string) => {
       setCollapsedGroups((prev) => {
         const next = new Set(prev);
@@ -265,7 +285,128 @@ export const TaskListView: React.FC<{
         </div>
 
         <div className="minimal-surface overflow-visible">
-          {isScheduledView && taskListMode === 'list' ? (
+          {isGroupedDayView && taskListMode === 'list' ? (
+            <>
+              {dayPartSections.map((section) => (
+                <section key={section.key} className="mb-6 last:mb-0">
+                  <div className="mb-2 flex items-center justify-between border-b soft-divider pb-2">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">{section.label}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">{section.listTasks.length}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <DayPartDropZone
+                      label={`Move to ${section.label}`}
+                      onDropTask={(taskId) => {
+                        const firstTask = section.listTasks[0];
+                        if (firstTask) onMoveTaskBefore(taskId, firstTask.id, firstTask.parentId);
+                        assignTaskToDayPart(taskId, section.key);
+                      }}
+                    />
+                    {section.listTasks.map((task) => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        allTasks={allTasks}
+                        projects={projects}
+                        childCount={childCounts.get(task.id) || 0}
+                        onToggleStar={onToggleStar}
+                        onToggleComplete={onToggleComplete}
+                        onUpdate={onUpdateTask}
+                        onMoveBefore={(sourceId, targetId) => {
+                          handleMoveTaskBeforeList(sourceId, targetId);
+                          assignTaskToDayPart(sourceId, section.key);
+                        }}
+                        onMoveAfter={(sourceId, targetId) => {
+                          handleMoveTaskAfterList(sourceId, targetId);
+                          assignTaskToDayPart(sourceId, section.key);
+                        }}
+                        onNestInto={(sourceId, targetId) => {
+                          handleNestTaskList(sourceId, targetId);
+                          assignTaskToDayPart(sourceId, section.key);
+                        }}
+                        onDelete={onDeleteTask}
+                        onOpenTask={onOpenTask}
+                        canNestTask={(sourceId, targetId) => canReparentTask(sourceId, targetId, allTasks)}
+                        onAddSubtask={onAddSubtask}
+                      />
+                    ))}
+                    <GhostItem
+                      placeholder={`Add to ${section.label.toLowerCase()}...`}
+                      onAdd={(title) => onAddTask(title, section.key)}
+                      className="mt-2 px-4 py-2 opacity-40 hover:opacity-100"
+                      iconSize={14}
+                    />
+                  </div>
+                </section>
+              ))}
+            </>
+          ) : isGroupedDayView && taskListMode === 'outline' ? (
+            <>
+              {dayPartSections.map((section) => (
+                <section key={section.key} className="mb-6 last:mb-0">
+                  <div className="mb-2 flex items-center justify-between border-b soft-divider pb-2">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)]">{section.label}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">{section.outlineRows.length}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <DayPartDropZone
+                      label={`Move to ${section.label}`}
+                      onDropTask={(taskId) => {
+                        const firstRow = section.outlineRows[0];
+                        if (firstRow) onMoveTaskBefore(taskId, firstRow.task.id, firstRow.task.parentId);
+                        assignTaskToDayPart(taskId, section.key);
+                      }}
+                    />
+                    {section.outlineRows.map((row) => (
+                      <OutlineTaskRow
+                        key={row.task.id}
+                        task={row.task}
+                        allTasks={allTasks}
+                        projects={projects}
+                        depth={row.depth}
+                        childCount={childCounts.get(row.task.id) || 0}
+                        hasChildren={row.hasChildren}
+                        isContextAncestor={row.isContextAncestor}
+                        canIndent={canIndentTask(row.task.id)}
+                        canOutdent={canOutdentTask(row.task.id)}
+                        canMoveUp={canMoveTaskUp(row.task.id)}
+                        canMoveDown={canMoveTaskDown(row.task.id)}
+                        onToggleComplete={onToggleComplete}
+                        onToggleStar={onToggleStar}
+                        onUpdate={onUpdateTask}
+                        onOpenTask={onOpenTask}
+                        onToggleCollapsed={onToggleTaskCollapsed}
+                        onIndent={handleIndentTask}
+                        onOutdent={handleOutdentTask}
+                        onMoveUp={handleMoveTaskUp}
+                        onMoveDown={handleMoveTaskDown}
+                        onMoveBefore={(sourceId, targetId) => {
+                          handleMoveTaskBeforeList(sourceId, targetId);
+                          assignTaskToDayPart(sourceId, section.key);
+                        }}
+                        onMoveAfter={(sourceId, targetId) => {
+                          handleMoveTaskAfterList(sourceId, targetId);
+                          assignTaskToDayPart(sourceId, section.key);
+                        }}
+                        onNestInto={(sourceId, targetId) => {
+                          handleNestTaskList(sourceId, targetId);
+                          assignTaskToDayPart(sourceId, section.key);
+                        }}
+                        canNestTask={(sourceId, targetId) => canReparentTask(sourceId, targetId, allTasks)}
+                        onAddSubtask={onAddSubtask}
+                      />
+                    ))}
+                    <GhostItem
+                      placeholder={`Add to ${section.label.toLowerCase()}...`}
+                      onAdd={(title) => onAddTask(title, section.key)}
+                      className="mt-2 px-4 py-2 opacity-40 hover:opacity-100"
+                      iconSize={14}
+                    />
+                  </div>
+                </section>
+              ))}
+            </>
+          ) : isScheduledView && taskListMode === 'list' ? (
             <>
               {scheduledListGroups.map((group, index) => {
                 const isCollapsed = collapsedGroups.has(group.dateKey);
@@ -426,12 +567,14 @@ export const TaskListView: React.FC<{
               ))}
             </>
           )}
-          <GhostItem
-            placeholder={taskListMode === 'outline' ? 'Tab to indent... Or type a top bullet' : 'Click to add a new task...'}
-            onAdd={handleAddTask}
-            className="mt-3 px-5 py-3 opacity-50 hover:opacity-100"
-            iconSize={16}
-          />
+          {!isGroupedDayView && (
+            <GhostItem
+              placeholder={taskListMode === 'outline' ? 'Tab to indent... Or type a top bullet' : 'Click to add a new task...'}
+              onAdd={handleAddTask}
+              className="mt-3 px-5 py-3 opacity-50 hover:opacity-100"
+              iconSize={16}
+            />
+          )}
         </div>
       </div>
     );
@@ -456,4 +599,42 @@ const formatScheduledGroupLabel = (dateKey: string) => {
     day: 'numeric',
     year: 'numeric',
   });
+};
+
+const DayPartDropZone: React.FC<{
+  label: string;
+  onDropTask: (id: string) => void;
+}> = ({ label, onDropTask }) => {
+  const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  return (
+    <div
+      className={`relative transition-[height] ${isDragOver ? 'h-6' : 'h-[3px]'}`}
+      onDragEnter={() => setIsDragOver(true)}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          setIsDragOver(false);
+        }
+      }}
+      onDragOver={(event) => {
+        if (!hasTaskDragPayload(event.dataTransfer)) return;
+        event.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragOver(false);
+        const id = event.dataTransfer.getData('taskId');
+        if (id) onDropTask(id);
+      }}
+    >
+      <div className={`absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 transition-colors ${isDragOver ? 'bg-[var(--accent)]/90' : 'bg-transparent'}`} />
+      {isDragOver && (
+        <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+          {label}
+        </div>
+      )}
+    </div>
+  );
 };

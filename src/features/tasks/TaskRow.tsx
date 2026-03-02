@@ -22,6 +22,7 @@ export const TaskRow: React.FC<{
 }> = ({ task, allTasks, projects, childCount = 0, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
   // HTML5 drag API lowercases all type keys in dataTransfer.types
   const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
+  const rowRef = useRef<HTMLDivElement>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [isOver, setIsOver] = useState(false);
   const [dropMode, setDropMode] = useState<'before' | 'inside' | 'after'>('inside');
@@ -36,6 +37,8 @@ export const TaskRow: React.FC<{
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const clickTimeoutRef = useRef<number | null>(null);
   const prevStatusRef = useRef(task.status);
+  const ownerDocument = rowRef.current?.ownerDocument ?? document;
+  const ownerWindow = ownerDocument.defaultView ?? window;
 
   useEffect(() => {
     setDraftTitle(task.title);
@@ -75,16 +78,16 @@ export const TaskRow: React.FC<{
     };
     const handleViewportChange = () => updateMenuPosition();
 
-    document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('resize', handleViewportChange);
-    window.addEventListener('scroll', handleViewportChange, true);
+    ownerDocument.addEventListener('mousedown', handleClickOutside);
+    ownerWindow.addEventListener('resize', handleViewportChange);
+    ownerWindow.addEventListener('scroll', handleViewportChange, true);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('resize', handleViewportChange);
-      window.removeEventListener('scroll', handleViewportChange, true);
+      ownerDocument.removeEventListener('mousedown', handleClickOutside);
+      ownerWindow.removeEventListener('resize', handleViewportChange);
+      ownerWindow.removeEventListener('scroll', handleViewportChange, true);
     };
-  }, [showMenu, updateMenuPosition]);
+  }, [ownerDocument, ownerWindow, showMenu, updateMenuPosition]);
 
   const handleDragStart = (event: React.DragEvent) => {
     event.dataTransfer.setData('taskId', task.id);
@@ -94,8 +97,8 @@ export const TaskRow: React.FC<{
 
   const handleRowClick = () => {
     if (isEditingTitle) return;
-    if (clickTimeoutRef.current) window.clearTimeout(clickTimeoutRef.current);
-    clickTimeoutRef.current = window.setTimeout(() => {
+    if (clickTimeoutRef.current) ownerWindow.clearTimeout(clickTimeoutRef.current);
+    clickTimeoutRef.current = ownerWindow.setTimeout(() => {
       setDraftTitle(task.title);
       setIsEditingTitle(true);
       clickTimeoutRef.current = null;
@@ -105,7 +108,7 @@ export const TaskRow: React.FC<{
   const handleTitleDoubleClick = (event: React.MouseEvent) => {
     event.stopPropagation();
     if (clickTimeoutRef.current) {
-      window.clearTimeout(clickTimeoutRef.current);
+      ownerWindow.clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
     }
     onOpenTask(task);
@@ -127,6 +130,7 @@ export const TaskRow: React.FC<{
 
   return (
     <div
+      ref={rowRef}
       draggable
       onDragStart={handleDragStart}
       onDragOver={(event) => {
@@ -294,7 +298,7 @@ export const TaskRow: React.FC<{
             </button>
           </div>
         </div>,
-        document.body
+        ownerDocument.body
       )}
 
     </div>

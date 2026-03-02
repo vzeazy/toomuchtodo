@@ -2,6 +2,7 @@ import React from 'react';
 import { AlignLeft, Shrink, FolderMinus, CalendarDays, Sun, CloudSun, Cloud, CloudFog, CloudRain, Snowflake, CloudLightning } from 'lucide-react';
 import { GhostItem } from '../../components/GhostItem';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
+import { flattenProjectTree, getParentTaskCountsByProject, getProjectSubtreeIds } from '../../lib/projectTree';
 import { PlannerWidthMode, Project, Task } from '../../types';
 import { useWeather, WeatherCode } from '../../lib/useWeather';
 
@@ -47,11 +48,16 @@ export const PlannerView: React.FC<{
   const [dragOverDay, setDragOverDay] = React.useState<string | null>(null);
   const [dragOverProject, setDragOverProject] = React.useState<string | null>(null);
   const parentTasks = tasks.filter((task) => task.parentId === null);
+  const orderedProjects = React.useMemo(() => flattenProjectTree(projects), [projects]);
+  const projectParentTaskCounts = React.useMemo(
+    () => getParentTaskCountsByProject(projects, tasks, selectedArea),
+    [projects, selectedArea, tasks]
+  );
   const firstVisibleDate = weekDays[0]?.dateStr;
   const carryForwardTasks = parentTasks.filter((task) => task.status !== 'completed' && task.dueDate && firstVisibleDate && task.dueDate < firstVisibleDate);
   const visibleProjects = hideEmptyProjects
-    ? projects.filter((project) => parentTasks.some((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)))
-    : projects;
+    ? orderedProjects.filter(({ project }) => (projectParentTaskCounts.get(project.id) || 0) > 0)
+    : orderedProjects;
 
   return (
     <div className={`space-y-12 ${widthMode === 'container' ? 'mx-auto max-w-7xl' : widthMode === 'wide' ? 'mx-auto max-w-[92rem]' : 'w-full max-w-none'}`}>
@@ -194,49 +200,76 @@ export const PlannerView: React.FC<{
               </div>
             </div>
           )}
-          {visibleProjects.map((project) => (
-            <div
-              key={project.id}
-              className={`relative rounded-2xl px-2 py-2 transition-all ${dragOverProject === project.id ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/65' : ''}`}
-              onDragEnter={() => setDragOverProject(project.id)}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                  setDragOverProject((value) => value === project.id ? null : value);
-                }
-              }}
-              onDragOver={(event) => {
-                if (!hasTaskDragPayload(event.dataTransfer)) return;
-                event.preventDefault();
-              }}
-              onDrop={(event) => {
-                setDragOverProject(null);
-                const id = event.dataTransfer.getData('taskId');
-                if (id) onUpdateTask(id, { projectId: project.id });
-              }}
-            >
-              {dragOverProject === project.id && (
-                <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
-                  Move to project
+          {visibleProjects.map(({ project, depth }) => {
+            const projectIds = getProjectSubtreeIds(project.id, projects);
+            const projectTasks = parentTasks.filter((task) => task.projectId && projectIds.has(task.projectId) && (!selectedArea || task.area === selectedArea));
+
+            return (
+              <div
+                key={project.id}
+                className={`relative rounded-2xl px-2 py-2 transition-all ${dragOverProject === project.id ? 'bg-[rgba(255,255,255,0.04)] ring-1 ring-[var(--accent)]/65' : ''}`}
+                onDragEnter={() => setDragOverProject(project.id)}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setDragOverProject((value) => value === project.id ? null : value);
+                  }
+                }}
+                onDragOver={(event) => {
+                  if (!hasTaskDragPayload(event.dataTransfer)) return;
+                  event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  setDragOverProject(null);
+                  const id = event.dataTransfer.getData('taskId');
+                  if (id) onUpdateTask(id, { projectId: project.id });
+                }}
+              >
+                {dragOverProject === project.id && (
+                  <div className="pointer-events-none absolute right-3 top-2 rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--accent)]">
+                    Move to project
+                  </div>
+                )}
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <button type="button" className={`min-w-0 text-left ${dragOverProject === project.id ? 'opacity-90' : ''}`} onClick={() => onOpenProject(project.id)}>
+                    <div className="flex items-center gap-2">
+                      {depth > 0 && (
+                        <span
+                          aria-hidden="true"
+                          className="h-5 w-5 shrink-0 rounded-full border border-[var(--border-color)] bg-[var(--panel-alt-bg)] text-center text-[10px] leading-5 text-[var(--text-muted)]"
+                        >
+                          {depth}
+                        </span>
+                      )}
+                      <span className="truncate text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-primary)]">
+                        {project.name}
+                      </span>
+                    </div>
+                    {depth > 0 && (
+                      <div className="mt-1 pl-7 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        Nested project
+                      </div>
+                    )}
+                  </button>
+                  <span className="rounded bg-[var(--panel-alt-bg)] px-1.5 py-0.5 text-[10px] font-bold uppercase text-[var(--text-muted)]">
+                    {projectTasks.length}
+                  </span>
                 </div>
-              )}
-              <button type="button" className={`mb-3 truncate text-left text-[16px] font-semibold tracking-[-0.02em] text-[var(--text-primary)] ${dragOverProject === project.id ? 'opacity-90' : ''}`} onClick={() => onOpenProject(project.id)}>
-                {project.name}
-              </button>
-              <div className="space-y-1">
-                {parentTasks.filter((task) => task.projectId === project.id && (!selectedArea || task.area === selectedArea)).slice(0, 8).map((task) => (
-                  <PlannerTaskRow
-                    key={task.id}
-                    task={task}
-                    layout="project"
-                    onUpdateTask={onUpdateTask}
-                    onOpenTask={onOpenTask}
-                    onToggleComplete={onToggleComplete}
-                  />
-                ))}
-                <GhostItem placeholder="Add to list..." onAdd={(title) => onAddProjectTask(title, project.id)} className="mt-1 opacity-40" />
+                <div className="space-y-1">
+                  {projectTasks.slice(0, 8).map((task) => (
+                    <PlannerTaskRow
+                      key={task.id}
+                      task={task}
+                      layout="project"
+                      onUpdateTask={onUpdateTask}
+                      onOpenTask={onOpenTask}
+                      onToggleComplete={onToggleComplete}
+                    />
+                  ))}
+                  <GhostItem placeholder="Add to list..." onAdd={(title) => onAddProjectTask(title, project.id)} className="mt-1 opacity-40" />
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -252,7 +285,7 @@ const PlannerDropZone: React.FC<{
 
   return (
     <div
-      className="relative h-4"
+      className={`relative transition-[height] ${isDragOver ? 'h-4' : 'h-[3px]'}`}
       onDragEnter={() => setIsDragOver(true)}
       onDragLeave={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node)) {
@@ -340,7 +373,7 @@ const PlannerTaskRow: React.FC<{
       onDragStart={handleDragStart}
       onClick={handleRowClick}
       onDoubleClick={handleRowDoubleClick}
-      className={`group flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)] ${layout === 'day' ? 'min-h-[28px]' : 'min-h-[26px]'}`}
+      className="group flex w-full items-center gap-2 rounded-lg px-1.5 py-0.5 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)] min-h-[26px]"
     >
       <span onClick={(event) => event.stopPropagation()} onDoubleClick={(event) => event.stopPropagation()}>
         <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[16px] w-[16px]" />

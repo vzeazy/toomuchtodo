@@ -4,6 +4,7 @@ export type AppView = TaskStatus | 'focus' | 'today' | 'trash' | 'all' | 'planne
 
 export type PlannerWidthMode = 'container' | 'wide' | 'full';
 export type TaskListMode = 'list' | 'outline';
+export type DayPart = 'morning' | 'afternoon' | 'evening';
 
 export interface Project {
   id: string;
@@ -21,6 +22,7 @@ export interface Task {
   projectId: string | null;
   area: string;
   dueDate: string | null;
+  dayPart: DayPart | null;
   parentId: string | null;
   collapsed: boolean;
   createdAt: number;
@@ -65,6 +67,7 @@ export interface AppSettings {
   hideEmptyProjectsInPlanner: boolean;
   compactEmptyDaysInPlanner: boolean;
   startPlannerOnToday: boolean;
+  groupDayViewByPart: boolean;
 }
 
 export interface AppStateData {
@@ -104,6 +107,7 @@ export interface TaskListExchangeTask {
   projectId: string | null;
   area: string;
   dueDate: string | null;
+  dayPart: DayPart | null;
   parentId: string | null;
   collapsed: boolean;
   createdAt: number;
