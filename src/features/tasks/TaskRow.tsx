@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, CornerDownRight, ExternalLink, GripVertical, MoreVertical, AlignLeft, Plus, Star, Trash2 } from 'lucide-react';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
+import { TaskTimerDot } from '../../components/timer/TaskTimerDot';
 import { Project, Task, TaskStatus } from '../../types';
 
 const TASK_STATUS_OPTIONS: Array<{ value: TaskStatus; label: string }> = [
@@ -277,6 +278,7 @@ export const TaskRow: React.FC<{
 
         <div className="ml-auto flex items-center gap-3">
           <div className={`flex items-center gap-1 transition-opacity ${task.isStarred || showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <TaskTimerDot taskId={task.id} />
             <button
               type="button"
               onClick={(event) => { event.stopPropagation(); onToggleStar(task.id); }}

@@ -14,6 +14,7 @@ import {
   TaskStatus,
   DayPart,
   ThemeDefinition,
+  TimerState,
 } from '../types';
 
 const STORAGE_KEY = 'too_much_to_do_state_v1';
@@ -35,6 +36,15 @@ const INITIAL_SETTINGS: AppSettings = {
   compactEmptyDaysInPlanner: false,
   startPlannerOnToday: false,
   groupDayViewByPart: false,
+};
+
+const INITIAL_TIMER_STATE: TimerState = {
+  active: false,
+  paused: false,
+  duration: 1800, // 30 minutes default
+  remaining: 1800,
+  linkedTaskId: null,
+  lastTick: null,
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -90,6 +100,7 @@ const getInitialState = (): AppStateData => {
           groupDayViewByPart: parsed.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
         },
         themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
+        timer: parsed.timer || INITIAL_TIMER_STATE,
       };
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -107,6 +118,7 @@ const getInitialState = (): AppStateData => {
     projects: legacyProjects.map(normalizeProject),
     settings: INITIAL_SETTINGS,
     themes: builtInThemes,
+    timer: INITIAL_TIMER_STATE,
   };
 };
 
@@ -274,6 +286,7 @@ export const useAppStore = () => {
         startPlannerOnToday: imported.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
       },
       themes: dedupeThemes([...(Array.isArray(imported.themes) ? imported.themes : []), ...builtInThemes]),
+      timer: imported.timer || INITIAL_TIMER_STATE,
     });
   }, []);
 
@@ -408,6 +421,66 @@ export const useAppStore = () => {
     }));
   }, []);
 
+  const startTimer = useCallback((duration: number, linkedTaskId: string | null = null) => {
+    setState((prev) => ({
+      ...prev,
+      timer: {
+        active: true,
+        paused: false,
+        duration,
+        remaining: duration,
+        linkedTaskId,
+        lastTick: Date.now(),
+      }
+    }));
+  }, []);
+
+  const pauseTimer = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      timer: { ...prev.timer, paused: true, lastTick: null }
+    }));
+  }, []);
+
+  const resumeTimer = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      timer: { ...prev.timer, paused: false, lastTick: Date.now() }
+    }));
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      timer: INITIAL_TIMER_STATE
+    }));
+  }, []);
+
+  const tickTimer = useCallback(() => {
+    setState((prev) => {
+      if (!prev.timer.active || prev.timer.paused || !prev.timer.lastTick) return prev;
+      const now = Date.now();
+      const deltaSeconds = Math.round((now - prev.timer.lastTick) / 1000);
+
+      if (deltaSeconds < 1) return prev; // Not enough time elapsed
+
+      const nextRemaining = Math.max(0, prev.timer.remaining - deltaSeconds);
+
+      if (nextRemaining === 0) {
+        // Option to handle timer completion here (e.g. stop automatically)
+        return {
+          ...prev,
+          timer: { ...prev.timer, remaining: 0, active: false, paused: false, lastTick: null }
+        };
+      }
+
+      return {
+        ...prev,
+        timer: { ...prev.timer, remaining: nextRemaining, lastTick: now }
+      };
+    });
+  }, []);
+
   const activeTheme = useMemo(() => {
     return state.themes.find((theme) => theme.id === state.settings.activeThemeId) || builtInThemes[0];
   }, [state.themes, state.settings.activeThemeId]);
@@ -441,5 +514,10 @@ export const useAppStore = () => {
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
+    startTimer,
+    pauseTimer,
+    resumeTimer,
+    stopTimer,
+    tickTimer,
   };
 };

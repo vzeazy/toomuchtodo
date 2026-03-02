@@ -55,6 +55,8 @@ import { TaskListView } from '../features/tasks/TaskListView';
 import { TaskModal } from '../features/tasks/TaskModal';
 import { TaskPanelWrapper, PanelState } from '../features/tasks/TaskPanelWrapper';
 import { collectTaskIdsWithAncestors } from '../features/tasks/taskTree';
+import { GlobalTimerOverlay } from '../components/timer/GlobalTimerOverlay';
+import { GlobalTimerTrigger } from '../components/timer/GlobalTimerTrigger';
 
 const AREAS = ['Personal', 'Work', 'Leisure', 'Finance'];
 const PROJECT_COLORS = ['#5ea1ff', '#71d7c7', '#f2b56b', '#ef7d7d', '#c792ea', '#9bd26f', '#f78fb3'];
@@ -108,6 +110,7 @@ export default function App() {
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
+    timer,
   } = useAppStore();
 
   const [currentView, setCurrentView] = useState<AppView>('planner');
@@ -251,9 +254,9 @@ export default function App() {
         setActiveTheme(nextTheme.id);
       }
     },
-    { id: 'export-data', label: 'Export Data', hint: 'Data', run: () => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes })) },
+    { id: 'export-data', label: 'Export Data', hint: 'Data', run: () => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer })) },
     { id: 'shortcuts', label: 'Open Keyboard Shortcuts', hint: 'Help', run: () => setShowShortcutsModal(true) },
-  ], [projects, settings, tasks, themes, setActiveTheme]);
+  ], [projects, settings, tasks, themes, timer, setActiveTheme]);
 
   const plannerWidthOptions: Array<{ id: PlannerWidthMode; label: string; icon: typeof Columns }> = [
     { id: 'container', label: 'Fit', icon: Columns },
@@ -756,7 +759,7 @@ export default function App() {
               themes={themes}
               activeThemeId={settings.activeThemeId}
               onSetActiveTheme={setActiveTheme}
-              onExportData={() => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes }))}
+              onExportData={() => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer }))}
               onImportData={(payload) => {
                 if (!isAppExport(payload)) return;
                 importAppData(payload);
@@ -874,6 +877,9 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <GlobalTimerOverlay />
+      <GlobalTimerTrigger />
     </div>
   );
 }

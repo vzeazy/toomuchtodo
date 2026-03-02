@@ -70,12 +70,22 @@ export interface AppSettings {
   groupDayViewByPart: boolean;
 }
 
+export interface TimerState {
+  active: boolean;
+  paused: boolean;
+  duration: number; // in seconds
+  remaining: number; // in seconds
+  linkedTaskId: string | null;
+  lastTick: number | null; // timestamp of last tick when active
+}
+
 export interface AppStateData {
   version: number;
   tasks: Task[];
   projects: Project[];
   settings: AppSettings;
   themes: ThemeDefinition[];
+  timer: TimerState;
 }
 
 export interface AppDataExport {
