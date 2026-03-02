@@ -97,6 +97,58 @@ Return a JSON object using schema "too-much-to-do.task-list" with updated tasks 
 Keep ids stable when possible.`;
 };
 
+export const getTaskListGenerationPrompt = (targetProjectName: string, direction: string) => `You are generating a structured task list for the "Too Much To Do" app.
+
+Goal:
+- Build a practical project task list that can be imported into the app.
+- Use complexity-aware structure: only include advanced fields when useful.
+
+Output requirements:
+- Return ONLY valid JSON.
+- Use this exact schema envelope:
+{
+  "schema": "too-much-to-do.task-list",
+  "version": 1,
+  "exportedAt": "<ISO datetime>",
+  "scope": { "type": "project", "projectId": "<target-project-id>" },
+  "projects": [{ "id": "<project-id>", "name": "<project-name>", "parentId": null, "color": "#hex optional" }],
+  "tasks": [
+    {
+      "id": "<stable-task-id>",
+      "title": "Task title",
+      "description": "Markdown notes when useful",
+      "status": "next",
+      "isStarred": false,
+      "projectId": "<project-id>",
+      "area": "Personal",
+      "dueDate": null,
+      "parentId": null,
+      "collapsed": false,
+      "createdAt": <unix ms>,
+      "tags": []
+    }
+  ]
+}
+
+Status rules:
+- allowed status values: inbox, next, waiting, scheduled, someday, completed, deleted
+- default to "next" unless a better status is obvious
+
+Modeling guidance:
+- Use parentId to create subtasks only when hierarchy is helpful
+- Add dueDate only for date-sensitive work
+- Add tags only when they help organization
+- Use descriptions for nuanced execution notes/checklists
+- Keep ids deterministic and human-readable (slug-style)
+
+Target project:
+- name: ${targetProjectName || 'Imported Project'}
+
+User direction:
+${direction.trim() || '(none provided)'}
+
+Return JSON now.`;
+
 const formatTaskLine = (task: Task) => {
   const checkbox = task.status === 'completed' ? '[x]' : '[ ]';
   const attrs: string[] = [];

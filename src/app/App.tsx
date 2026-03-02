@@ -90,6 +90,9 @@ export default function App() {
     importAppData,
     importTaskListData,
     setShowCompletedTasks,
+    toggleHideEmptyProjectsInPlanner,
+    toggleCompactEmptyDaysInPlanner,
+    toggleStartPlannerOnToday,
   } = useAppStore();
 
   const [currentView, setCurrentView] = useState<AppView>('planner');
@@ -105,10 +108,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [colorPopoverProjectId, setColorPopoverProjectId] = useState<string | null>(null);
-  const [hideEmptyProjectsInPlanner, setHideEmptyProjectsInPlanner] = useState(false);
-  const [compactEmptyDaysInPlanner, setCompactEmptyDaysInPlanner] = useState(false);
-
-  const [startPlannerOnToday, setStartPlannerOnToday] = useState(false);
 
   const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
 
@@ -132,7 +131,7 @@ export default function App() {
   const newTaskInputRef = useRef<HTMLInputElement>(null);
   const sidebarSearchRef = useRef<HTMLInputElement>(null);
 
-  const weekDays = useMemo(() => getWeekDays(currentWeekOffset, startPlannerOnToday), [currentWeekOffset, startPlannerOnToday]);
+  const weekDays = useMemo(() => getWeekDays(currentWeekOffset, settings.startPlannerOnToday), [currentWeekOffset, settings.startPlannerOnToday]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDays), [weekDays]);
 
   const counts = useMemo(() => {
@@ -440,16 +439,18 @@ export default function App() {
             </div>
           )}
 
-          <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
+          <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
+            <button
+              type="button"
+              onClick={() => setShowCompletedTasks(!settings.showCompletedTasks)}
+              className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${settings.showCompletedTasks ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+              title={settings.showCompletedTasks ? "Hide completed tasks" : "Show completed tasks"}
+            >
+              {settings.showCompletedTasks ? <Eye size={16} /> : <EyeOff size={16} />}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setShowCompletedTasks(!settings.showCompletedTasks)}
-            className={`flex h-[30px] w-[34px] items-center justify-center transition-colors hover:text-[var(--text-primary)] ${settings.showCompletedTasks ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}
-            title={settings.showCompletedTasks ? "Hide completed tasks" : "Show completed tasks"}
-          >
-            {settings.showCompletedTasks ? <Eye size={16} /> : <EyeOff size={16} />}
-          </button>
+          <div className="mx-1 h-4 w-px bg-[var(--border-color)]" />
 
           <button type="button" onClick={() => setShowShortcutsModal(true)} className="flex h-[30px] w-[34px] items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]" title="Shortcuts (K)">
             <Keyboard size={18} />
@@ -588,9 +589,9 @@ export default function App() {
               projects={projects}
               widthMode={settings.plannerWidthMode}
               selectedArea={selectedArea}
-              hideEmptyProjects={hideEmptyProjectsInPlanner}
-              compactEmptyDays={compactEmptyDaysInPlanner}
-              startOnToday={startPlannerOnToday}
+              hideEmptyProjects={settings.hideEmptyProjectsInPlanner}
+              compactEmptyDays={settings.compactEmptyDaysInPlanner}
+              startOnToday={settings.startPlannerOnToday}
               onUpdateTask={updateTask}
               onMoveTaskBefore={moveTaskBeforeFlat}
               onMoveTaskAfter={moveTaskAfterFlat}
@@ -603,9 +604,9 @@ export default function App() {
                 setSelectedProjectId(null);
                 setCurrentView('day');
               }}
-              onToggleHideEmptyProjects={() => setHideEmptyProjectsInPlanner((value) => !value)}
-              onToggleCompactEmptyDays={() => setCompactEmptyDaysInPlanner((value) => !value)}
-              onToggleStartOnToday={() => setStartPlannerOnToday((value) => !value)}
+              onToggleHideEmptyProjects={toggleHideEmptyProjectsInPlanner}
+              onToggleCompactEmptyDays={toggleCompactEmptyDaysInPlanner}
+              onToggleStartOnToday={toggleStartPlannerOnToday}
             />
           )}
 

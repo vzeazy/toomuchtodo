@@ -85,6 +85,9 @@ const INITIAL_SETTINGS: AppSettings = {
   plannerWidthMode: 'container',
   taskListMode: 'list',
   showCompletedTasks: true,
+  hideEmptyProjectsInPlanner: false,
+  compactEmptyDaysInPlanner: false,
+  startPlannerOnToday: false,
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -133,6 +136,9 @@ const getInitialState = (): AppStateData => {
           plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
           taskListMode: (parsed.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
           showCompletedTasks: parsed.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
+          hideEmptyProjectsInPlanner: parsed.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
+          compactEmptyDaysInPlanner: parsed.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
+          startPlannerOnToday: parsed.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
         },
         themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
       };
@@ -300,6 +306,9 @@ export const useAppStore = () => {
         plannerWidthMode: (imported.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
         taskListMode: (imported.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
         showCompletedTasks: imported.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
+        hideEmptyProjectsInPlanner: imported.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
+        compactEmptyDaysInPlanner: imported.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
+        startPlannerOnToday: imported.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
       },
       themes: dedupeThemes([...(Array.isArray(imported.themes) ? imported.themes : []), ...builtInThemes]),
     });
@@ -393,6 +402,18 @@ export const useAppStore = () => {
     setState((prev) => ({ ...prev, settings: { ...prev.settings, showCompletedTasks } }));
   }, []);
 
+  const toggleHideEmptyProjectsInPlanner = useCallback(() => {
+    setState((prev) => ({ ...prev, settings: { ...prev.settings, hideEmptyProjectsInPlanner: !prev.settings.hideEmptyProjectsInPlanner } }));
+  }, []);
+
+  const toggleCompactEmptyDaysInPlanner = useCallback(() => {
+    setState((prev) => ({ ...prev, settings: { ...prev.settings, compactEmptyDaysInPlanner: !prev.settings.compactEmptyDaysInPlanner } }));
+  }, []);
+
+  const toggleStartPlannerOnToday = useCallback(() => {
+    setState((prev) => ({ ...prev, settings: { ...prev.settings, startPlannerOnToday: !prev.settings.startPlannerOnToday } }));
+  }, []);
+
   const setTaskParent = useCallback((taskId: string, parentId: string | null) => {
     setState((prev) => ({ ...prev, tasks: updateTaskParent(prev.tasks, taskId, parentId) }));
   }, []);
@@ -449,5 +470,8 @@ export const useAppStore = () => {
     saveTheme,
     importAppData,
     importTaskListData,
+    toggleHideEmptyProjectsInPlanner,
+    toggleCompactEmptyDaysInPlanner,
+    toggleStartPlannerOnToday,
   };
 };

@@ -62,6 +62,9 @@ export interface AppSettings {
   plannerWidthMode: PlannerWidthMode;
   taskListMode: TaskListMode;
   showCompletedTasks: boolean;
+  hideEmptyProjectsInPlanner: boolean;
+  compactEmptyDaysInPlanner: boolean;
+  startPlannerOnToday: boolean;
 }
 
 export interface AppStateData {

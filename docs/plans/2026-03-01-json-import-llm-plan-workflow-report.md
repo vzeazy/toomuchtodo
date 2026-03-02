@@ -48,6 +48,30 @@ Nuances:
   - Project imports are normalized to the selected project id
 - This gives predictable behavior for list roundtrips while avoiding higher-risk parser/import ambiguity.
 
+### 2026-03-02 - UX refinement + missing prompt flow completed
+
+- Moved Agent Theme Builder into a collapsible advanced section under Themes.
+- Upgraded Task List Roundtrip UI:
+  - larger quick-start button cards with concise explanations
+  - project selection + direction/nuance input for generation
+  - quick actions focused on:
+    - copy template prompt to clipboard
+    - import project JSON
+- Added missing task-list generator template prompt flow:
+  - new `getTaskListGenerationPrompt(...)` helper in `src/lib/taskListExchange.ts`
+  - prompt explicitly instructs LLM to return strict `too-much-to-do.task-list` JSON using app-supported task fields
+- Moved secondary actions into collapsible advanced area:
+  - scoped export JSON
+  - scoped import JSON with mode control
+  - markdown export
+  - progress prompt copy
+
+Nuances:
+
+- Quick import intentionally normalizes imported payload to the selected project scope for predictable behavior.
+- Advanced import still supports Inbox/project scope controls and all import modes.
+- Build verified after refinements: `npm run build` (pass).
+
 ---
 
 ## What exists today (codebase findings)
