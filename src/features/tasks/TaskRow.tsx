@@ -164,7 +164,7 @@ export const TaskRow: React.FC<{
       {isOver && dropMode === 'before' && <div className="absolute inset-x-1 top-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
       {isOver && dropMode === 'after' && <div className="absolute inset-x-1 bottom-0 z-20 h-[2px] bg-[var(--accent)]/90" />}
       <div
-        className="relative flex cursor-pointer items-center gap-3 pl-0 pr-5 py-2.5"
+        className="relative flex cursor-pointer items-center gap-4 py-3 pl-0 pr-4"
         onClick={handleRowClick}
         onDoubleClick={handleTitleDoubleClick}
       >
@@ -174,7 +174,7 @@ export const TaskRow: React.FC<{
         <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className="h-[18px] w-[18px]" />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             {isEditingTitle ? (
               <input
                 autoFocus
@@ -193,76 +193,91 @@ export const TaskRow: React.FC<{
                     setIsEditingTitle(false);
                   }
                 }}
-                className="w-full rounded bg-transparent text-[13px] font-normal tracking-[-0.01em] text-[var(--text-primary)] outline-none ring-1 ring-[var(--focus)]"
+                className="w-full rounded bg-transparent text-[13px] font-medium tracking-[-0.01em] text-[var(--text-primary)] outline-none ring-1 ring-[var(--focus)]"
               />
             ) : (
               <span
-                className={`truncate text-[13px] font-normal tracking-[-0.01em] ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
+                className={`truncate text-[13px] font-medium tracking-[-0.01em] ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
               >
                 {task.title}
               </span>
             )}
-            {task.description.trim() && <AlignLeft size={14} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" title="Task has notes" />}
           </div>
           {(task.tags.length > 0 || task.projectId) && (
-            <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
-              {task.tags.slice(0, 3).map((tag) => <span key={tag} className="text-[var(--text-muted)]">#{tag}</span>)}
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
               {task.projectId && (
-                <span className="text-[var(--text-muted)]">
+                <span className="font-medium text-[var(--text-muted)] opacity-80">
                   {projects.find((project) => project.id === task.projectId)?.name || 'Project'}
                 </span>
               )}
-              {childCount > 0 && <span className="text-[var(--text-muted)]">{childCount} subtask{childCount === 1 ? '' : 's'}</span>}
+              {task.tags.slice(0, 3).map((tag) => <span key={tag} className="text-[var(--text-muted)] opacity-60">#{tag}</span>)}
             </div>
-          )}
-          {childCount > 0 && task.tags.length === 0 && !task.projectId && (
-            <div className="mt-1 text-[11px] text-[var(--text-muted)]">{childCount} subtask{childCount === 1 ? '' : 's'}</div>
           )}
         </div>
 
-        <div className={`flex items-center gap-1 transition-opacity ${task.isStarred ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-          <button
-            type="button"
-            onClick={(event) => { event.stopPropagation(); onToggleStar(task.id); }}
-            className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
-          >
-            <Star size={16} fill={task.isStarred ? 'currentColor' : 'none'} />
-          </button>
-          <button
-            ref={menuButtonRef}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              updateMenuPosition();
-              setShowMenu((prev) => !prev);
-            }}
-            className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${showMenu ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}
-          >
-            <MoreVertical size={14} />
-          </button>
+        <div className="ml-auto flex items-center gap-3">
+          <div className={`flex items-center gap-1 transition-opacity ${task.isStarred || showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <button
+              type="button"
+              onClick={(event) => { event.stopPropagation(); onToggleStar(task.id); }}
+              className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+              title="Toggle star"
+            >
+              <Star size={15} fill={task.isStarred ? 'currentColor' : 'none'} />
+            </button>
+            <button
+              ref={menuButtonRef}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                updateMenuPosition();
+                setShowMenu((prev) => !prev);
+              }}
+              className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${showMenu ? 'bg-[var(--panel-alt-bg)] text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}
+              title="Task actions"
+            >
+              <MoreVertical size={14} />
+            </button>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="text-[var(--text-muted)] opacity-60" />}
+            {childCount > 0 && (
+              <span className="rounded-full bg-[var(--panel-alt-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--text-muted)]">
+                {childCount === 1 ? '1 subtask' : `${childCount} subtasks`}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       {showMenu && createPortal(
-        <div ref={menuRef} className="fixed z-[2300] w-56 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--elevated-bg)] shadow-2xl" style={{ top: menuPosition.top, left: menuPosition.left }}>
-          <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTask(task); setShowMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">
-            <ExternalLink size={13} /> Open task
-          </button>
-          <div className="my-1 border-t border-[var(--border-color)]" />
-          <div className="bg-[var(--panel-alt-bg)] px-3 py-1.5 text-[10px] font-bold uppercase text-[var(--text-muted)]">Project</div>
-          {projects.slice(0, 6).map((project) => (
-            <button key={project.id} type="button" onClick={(event) => { event.stopPropagation(); onUpdate(task.id, { projectId: project.id }); setShowMenu(false); }} className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">
-              <span className="truncate">{project.name}</span>
-              {task.projectId === project.id && <CheckCircle2 size={12} className="text-[var(--accent)]" />}
+        <div ref={menuRef} className="fixed z-[2300] w-56 overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[var(--elevated-bg)] shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-3xl animate-in fade-in zoom-in-95 duration-100" style={{ top: menuPosition.top, left: menuPosition.left }}>
+          <div className="p-1">
+            <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTask(task); setShowMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.06)]">
+              <ExternalLink size={13} className="text-[var(--text-muted)]" /> Open details
             </button>
-          ))}
-          <div className="my-1 border-t border-[var(--border-color)]" />
-          <button type="button" onClick={(event) => { event.stopPropagation(); onDelete(task.id); setShowMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]">
-            <Trash2 size={12} /> Delete
-          </button>
+          </div>
+          <div className="h-px bg-white/5 mx-1" />
+          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)] opacity-80">Project</div>
+          <div className="p-1 pt-0 max-h-48 overflow-y-auto">
+            {projects.slice(0, 8).map((project) => (
+              <button key={project.id} type="button" onClick={(event) => { event.stopPropagation(); onUpdate(task.id, { projectId: project.id }); setShowMenu(false); }} className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.06)]">
+                <span className="truncate">{project.name}</span>
+                {task.projectId === project.id && <CheckCircle2 size={12} className="text-[var(--accent)]" />}
+              </button>
+            ))}
+          </div>
+          <div className="h-px bg-white/5 mx-1" />
+          <div className="p-1">
+            <button type="button" onClick={(event) => { event.stopPropagation(); onDelete(task.id); setShowMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]/20">
+              <Trash2 size={13} /> Delete task
+            </button>
+          </div>
         </div>,
         document.body
       )}
+
     </div>
   );
 };

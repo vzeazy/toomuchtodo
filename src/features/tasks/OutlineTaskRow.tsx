@@ -278,98 +278,104 @@ export const OutlineTaskRow: React.FC<{
                   {task.title}
                 </span>
               )}
-              {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="ml-auto shrink-0 text-[var(--text-muted)] opacity-60" />}
-              {childCount > 0 && (
-                <span className="rounded-full bg-[var(--panel-alt-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                  {childCount}
-                </span>
-              )}
-              {isContextAncestor && (
-                <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--accent)]">
-                  Context
-                </span>
-              )}
             </div>
             {(task.projectId || task.tags.length > 0) && (
               <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-[var(--text-muted)]">
-                {task.projectId && <span>{projects.find((project) => project.id === task.projectId)?.name || 'Project'}</span>}
-                {task.tags.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}
+                {task.projectId && <span className="font-medium opacity-80">{projects.find((project) => project.id === task.projectId)?.name || 'Project'}</span>}
+                {task.tags.slice(0, 3).map((tag) => <span key={tag} className="opacity-60">#{tag}</span>)}
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleStar(task.id);
-              }}
-              className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-              aria-label="Toggle star"
-            >
-              <Star size={14} fill={task.isStarred ? 'currentColor' : 'none'} />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onOutdent(task.id);
-              }}
-              disabled={!canOutdent}
-              className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
-              aria-label="Outdent task"
-            >
-              <ArrowLeft size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onIndent(task.id);
-              }}
-              disabled={!canIndent}
-              className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
-              aria-label="Indent task"
-            >
-              <ArrowRight size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onMoveUp(task.id);
-              }}
-              disabled={!canMoveUp}
-              className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
-              aria-label="Move task up"
-            >
-              <ChevronUpIcon />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onMoveDown(task.id);
-              }}
-              disabled={!canMoveDown}
-              className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
-              aria-label="Move task down"
-            >
-              <ChevronDownIcon />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenTask(task);
-              }}
-              className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)]"
-              aria-label="Open task"
-            >
-              <ExternalLink size={14} />
-            </button>
+          <div className="ml-auto flex items-center gap-3">
+            <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleStar(task.id);
+                }}
+                className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                aria-label="Toggle star"
+              >
+                <Star size={14} fill={task.isStarred ? 'currentColor' : 'none'} />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOutdent(task.id);
+                }}
+                disabled={!canOutdent}
+                className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Outdent task"
+              >
+                <ArrowLeft size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onIndent(task.id);
+                }}
+                disabled={!canIndent}
+                className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Indent task"
+              >
+                <ArrowRight size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onMoveUp(task.id);
+                }}
+                disabled={!canMoveUp}
+                className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Move task up"
+              >
+                <ChevronUpIcon />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onMoveDown(task.id);
+                }}
+                disabled={!canMoveDown}
+                className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Move task down"
+              >
+                <ChevronDownIcon />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenTask(task);
+                }}
+                className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--panel-alt-bg)] hover:text-[var(--text-primary)]"
+                aria-label="Open task"
+              >
+                <ExternalLink size={14} />
+              </button>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="text-[var(--text-muted)] opacity-60" />}
+              {childCount > 0 && (
+                <span className="rounded-full bg-[var(--panel-alt-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--text-muted)] shrink-0">
+                  {childCount}
+                </span>
+              )}
+              {isContextAncestor && (
+                <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--accent)] shrink-0">
+                  Context
+                </span>
+              )}
+            </div>
           </div>
+
         </div>
 
       </div>
