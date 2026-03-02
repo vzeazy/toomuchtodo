@@ -261,7 +261,7 @@ export const useAppStore = () => {
         if (task.status === 'completed') {
           return {
             ...task,
-            status: task.dueDate ? 'scheduled' : 'next',
+            status: task.dueDate ? 'scheduled' : (task.projectId ? 'open' : 'next'),
           };
         }
         return { ...task, status: 'completed' };

@@ -2,7 +2,16 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, CornerDownRight, ExternalLink, GripVertical, MoreVertical, AlignLeft, Plus, Star, Trash2 } from 'lucide-react';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
-import { Project, Task } from '../../types';
+import { Project, Task, TaskStatus } from '../../types';
+
+const TASK_STATUS_OPTIONS: Array<{ value: TaskStatus; label: string }> = [
+  { value: 'open', label: 'Open' },
+  { value: 'next', label: 'Next' },
+  { value: 'waiting', label: 'Waiting' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'someday', label: 'Someday' },
+  { value: 'inbox', label: 'Inbox' },
+];
 
 export const TaskRow: React.FC<{
   task: Task;
@@ -10,6 +19,10 @@ export const TaskRow: React.FC<{
   projects: Project[];
   childCount?: number;
   compact?: boolean;
+  selected?: boolean;
+  selectionActive?: boolean;
+  selectedTaskIds?: string[];
+  onSelect?: (event: React.MouseEvent, taskId: string) => void;
   onToggleStar: (id: string) => void;
   onToggleComplete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Task>) => void;
@@ -20,7 +33,7 @@ export const TaskRow: React.FC<{
   onOpenTask: (task: Task) => void;
   canNestTask: (sourceId: string, targetId: string) => boolean;
   onAddSubtask: (parentTask: Task, title: string) => void;
-}> = ({ task, allTasks, projects, childCount = 0, compact = false, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
+}> = ({ task, allTasks, projects, childCount = 0, compact = false, selected = false, selectionActive = false, selectedTaskIds = [], onSelect, onToggleStar, onToggleComplete, onUpdate, onMoveBefore, onMoveAfter, onNestInto, onDelete, onOpenTask, canNestTask, onAddSubtask }) => {
   // HTML5 drag API lowercases all type keys in dataTransfer.types
   const hasTaskDragPayload = (dataTransfer: DataTransfer) => Array.from(dataTransfer.types || []).includes('taskid');
   const rowRef = useRef<HTMLDivElement>(null);
@@ -91,13 +104,24 @@ export const TaskRow: React.FC<{
   }, [ownerDocument, ownerWindow, showMenu, updateMenuPosition]);
 
   const handleDragStart = (event: React.DragEvent) => {
+    if (event.altKey) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData('taskId', task.id);
+    if (selected && selectedTaskIds.length > 1) {
+      event.dataTransfer.setData('taskIds', JSON.stringify(selectedTaskIds));
+    }
     event.dataTransfer.setData('context', 'reorder');
     event.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleRowClick = () => {
+  const handleRowClick = (event: React.MouseEvent) => {
     if (isEditingTitle) return;
+    if (selectionActive || event.metaKey || event.ctrlKey || event.shiftKey) {
+      onSelect?.(event, task.id);
+      return;
+    }
     if (clickTimeoutRef.current) ownerWindow.clearTimeout(clickTimeoutRef.current);
     clickTimeoutRef.current = ownerWindow.setTimeout(() => {
       setDraftTitle(task.title);
@@ -132,6 +156,8 @@ export const TaskRow: React.FC<{
   return (
     <div
       ref={rowRef}
+      data-task-row="true"
+      data-task-id={task.id}
       draggable
       onDragStart={handleDragStart}
       onDragOver={(event) => {
@@ -152,16 +178,26 @@ export const TaskRow: React.FC<{
       onDrop={(event) => {
         event.preventDefault();
         setIsOver(false);
-        const sourceId = event.dataTransfer.getData('taskId');
-        if (sourceId && sourceId !== task.id && hasTaskDragPayload(event.dataTransfer)) {
-          if (dropMode === 'before') onMoveBefore(sourceId, task.id);
-          else if (dropMode === 'after') onMoveAfter(sourceId, task.id);
-          else if (canNestTask(sourceId, task.id)) onNestInto(sourceId, task.id);
-          else onMoveAfter(sourceId, task.id);
+        const draggedIds = (() => {
+          const raw = event.dataTransfer.getData('taskIds');
+          if (!raw) return [event.dataTransfer.getData('taskId')].filter(Boolean);
+          try {
+            return JSON.parse(raw) as string[];
+          } catch {
+            return [event.dataTransfer.getData('taskId')].filter(Boolean);
+          }
+        })();
+        const filteredIds = draggedIds.filter((sourceId) => sourceId && sourceId !== task.id);
+        if (filteredIds.length > 0 && hasTaskDragPayload(event.dataTransfer)) {
+          const primaryId = filteredIds[0];
+          if (dropMode === 'before') onMoveBefore(primaryId, task.id);
+          else if (dropMode === 'after') onMoveAfter(primaryId, task.id);
+          else if (canNestTask(primaryId, task.id)) onNestInto(primaryId, task.id);
+          else onMoveAfter(primaryId, task.id);
         }
         setDropMode('inside');
       }}
-      className={`group relative flex flex-col rounded-xl transition-all hover:bg-[rgba(255,255,255,0.015)] ${isOver && dropMode === 'inside' ? 'bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/50' : isOver ? 'bg-[rgba(255,255,255,0.03)]' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
+      className={`group relative flex flex-col rounded-xl transition-all hover:bg-[rgba(255,255,255,0.015)] ${selected ? 'bg-[var(--accent-soft)]/50 ring-1 ring-[var(--accent)]/55' : ''} ${isOver && dropMode === 'inside' ? 'bg-[var(--accent)]/10 ring-2 ring-[var(--accent)]/50' : isOver ? 'bg-[rgba(255,255,255,0.03)]' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
     >
       {/* drop intent label */}
       {isOver && (
@@ -281,6 +317,25 @@ export const TaskRow: React.FC<{
             <button type="button" onClick={(event) => { event.stopPropagation(); onOpenTask(task); setShowMenu(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.06)]">
               <ExternalLink size={13} className="text-[var(--text-muted)]" /> Open details
             </button>
+          </div>
+          <div className="h-px bg-white/5 mx-1" />
+          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)] opacity-80">Status</div>
+          <div className="p-1 pt-0">
+            {TASK_STATUS_OPTIONS.map((status) => (
+              <button
+                key={status.value}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onUpdate(task.id, { status: status.value });
+                  setShowMenu(false);
+                }}
+                className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+              >
+                <span>{status.label}</span>
+                {task.status === status.value && <CheckCircle2 size={12} className="text-[var(--accent)]" />}
+              </button>
+            ))}
           </div>
           <div className="h-px bg-white/5 mx-1" />
           <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)] opacity-80">Project</div>

@@ -3,7 +3,7 @@ import { Star, Trash2, X, Plus, CornerDownRight, AlignLeft, ChevronDown, Chevron
 import { SmartSelect } from '../../components/SmartSelect';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
 import { renderMarkdown } from '../../lib/markdown';
-import { DayPart, Project, Task } from '../../types';
+import { DayPart, Project, Task, TaskStatus } from '../../types';
 import { canReparentTask } from './taskTree';
 
 const AREAS = ['Personal', 'Work', 'Leisure', 'Finance'];
@@ -11,6 +11,14 @@ const DAY_PARTS: Array<{ value: DayPart; label: string }> = [
   { value: 'morning', label: 'Morning' },
   { value: 'afternoon', label: 'Afternoon' },
   { value: 'evening', label: 'Evening' },
+];
+const TASK_STATUSES: Array<{ value: TaskStatus; label: string }> = [
+  { value: 'open', label: 'Open' },
+  { value: 'next', label: 'Next' },
+  { value: 'waiting', label: 'Waiting' },
+  { value: 'scheduled', label: 'Scheduled' },
+  { value: 'someday', label: 'Someday' },
+  { value: 'inbox', label: 'Inbox' },
 ];
 
 export const TaskModal: React.FC<{
@@ -345,11 +353,21 @@ export const TaskModal: React.FC<{
 
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Status</label>
+                <SmartSelect
+                  className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
+                  value={task.status === 'completed' ? 'open' : task.status}
+                  onChange={(val) => onUpdate(task.id, { status: val as TaskStatus })}
+                  options={TASK_STATUSES}
+                />
+              </div>
+
+              <div>
                 <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Due Date</label>
                 <input
                   type="date"
                   value={task.dueDate || ''}
-                  onChange={(event) => onUpdate(task.id, { dueDate: event.target.value || null, status: event.target.value ? 'scheduled' : task.status })}
+                  onChange={(event) => onUpdate(task.id, { dueDate: event.target.value || null, status: event.target.value ? 'scheduled' : (task.status === 'scheduled' ? (task.projectId ? 'open' : 'next') : task.status) })}
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)] [color-scheme:dark]"
                 />
               </div>

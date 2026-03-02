@@ -117,7 +117,7 @@ Output requirements:
       "id": "<stable-task-id>",
       "title": "Task title",
       "description": "Markdown notes when useful",
-      "status": "next",
+      "status": "open",
       "isStarred": false,
       "projectId": "<project-id>",
       "area": "Personal",
@@ -131,8 +131,8 @@ Output requirements:
 }
 
 Status rules:
-- allowed status values: inbox, next, waiting, scheduled, someday, completed, deleted
-- default to "next" unless a better status is obvious
+- allowed status values: inbox, open, next, waiting, scheduled, someday, completed, deleted
+- default to "open" for project tasks unless a better status is obvious
 
 Modeling guidance:
 - Use parentId to create subtasks only when hierarchy is helpful

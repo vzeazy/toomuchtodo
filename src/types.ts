@@ -1,4 +1,4 @@
-export type TaskStatus = 'inbox' | 'next' | 'waiting' | 'scheduled' | 'someday' | 'completed' | 'deleted';
+export type TaskStatus = 'inbox' | 'open' | 'next' | 'waiting' | 'scheduled' | 'someday' | 'completed' | 'deleted';
 
 export type AppView = TaskStatus | 'focus' | 'today' | 'trash' | 'all' | 'planner' | 'day' | 'settings' | 'search';
 

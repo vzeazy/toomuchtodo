@@ -146,8 +146,8 @@ export const TaskPanelWrapper: React.FC<{
         groupDayViewByPart={Boolean(settings.groupDayViewByPart)}
         backLabel={panel.view === 'day' ? 'Back to week' : undefined}
         onExpandTask={setExpandedTaskId}
-        onAddTask={(title, dayPart) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null, false, null, panel.view === 'day' ? (dayPart || 'morning') : null)}
-        onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : 'next') : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
+        onAddTask={(title, dayPart) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null, false, null, panel.view === 'day' ? (dayPart || 'morning') : null)}
+        onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : (parentTask.projectId ? 'open' : 'next')) : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
         onTaskListModeChange={setTaskListMode}
         onToggleStar={toggleStar}
         onToggleComplete={toggleComplete}

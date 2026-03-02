@@ -21,6 +21,10 @@ export const OutlineTaskRow: React.FC<{
   depth: number;
   childCount: number;
   compact?: boolean;
+  selected?: boolean;
+  selectionActive?: boolean;
+  selectedTaskIds?: string[];
+  onSelect?: (event: React.MouseEvent, taskId: string) => void;
   hasChildren: boolean;
   isContextAncestor: boolean;
   canIndent: boolean;
@@ -48,6 +52,10 @@ export const OutlineTaskRow: React.FC<{
   depth,
   childCount,
   compact = false,
+  selected = false,
+  selectionActive = false,
+  selectedTaskIds = [],
+  onSelect,
   hasChildren,
   isContextAncestor,
   isExpanded,
@@ -136,8 +144,12 @@ export const OutlineTaskRow: React.FC<{
       }
     };
 
-    const handleRowClick = () => {
+    const handleRowClick = (event: React.MouseEvent) => {
       if (isEditingTitle) return;
+      if (selectionActive || event.metaKey || event.ctrlKey || event.shiftKey) {
+        onSelect?.(event, task.id);
+        return;
+      }
       if (clickTimeoutRef.current) window.clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = window.setTimeout(() => {
         setDraftTitle(task.title);
@@ -176,7 +188,14 @@ export const OutlineTaskRow: React.FC<{
     const subtasks = allTasks.filter((item) => item.parentId === task.id);
 
     const handleDragStart = (event: React.DragEvent) => {
+      if (event.altKey) {
+        event.preventDefault();
+        return;
+      }
       event.dataTransfer.setData('taskId', task.id);
+      if (selected && selectedTaskIds.length > 1) {
+        event.dataTransfer.setData('taskIds', JSON.stringify(selectedTaskIds));
+      }
       event.dataTransfer.setData('context', 'reorder');
       event.dataTransfer.effectAllowed = 'move';
     };
@@ -184,6 +203,8 @@ export const OutlineTaskRow: React.FC<{
     return (
       <div
         tabIndex={0}
+        data-task-row="true"
+        data-task-id={task.id}
         onKeyDown={handleKeyDown}
         draggable
         onDragStart={handleDragStart}
@@ -214,16 +235,26 @@ export const OutlineTaskRow: React.FC<{
         onDrop={(event) => {
           event.preventDefault();
           setIsOver(false);
-          const sourceId = event.dataTransfer.getData('taskId');
-          if (sourceId && sourceId !== task.id && hasTaskDragPayload(event.dataTransfer)) {
-            if (dropMode === 'before') onMoveBefore(sourceId, task.id);
-            else if (dropMode === 'after') onMoveAfter(sourceId, task.id);
-            else if (canNestTask(sourceId, task.id)) onNestInto(sourceId, task.id);
-            else onMoveAfter(sourceId, task.id);
+          const draggedIds = (() => {
+            const raw = event.dataTransfer.getData('taskIds');
+            if (!raw) return [event.dataTransfer.getData('taskId')].filter(Boolean);
+            try {
+              return JSON.parse(raw) as string[];
+            } catch {
+              return [event.dataTransfer.getData('taskId')].filter(Boolean);
+            }
+          })();
+          const filteredIds = draggedIds.filter((sourceId) => sourceId && sourceId !== task.id);
+          if (filteredIds.length > 0 && hasTaskDragPayload(event.dataTransfer)) {
+            const primaryId = filteredIds[0];
+            if (dropMode === 'before') onMoveBefore(primaryId, task.id);
+            else if (dropMode === 'after') onMoveAfter(primaryId, task.id);
+            else if (canNestTask(primaryId, task.id)) onNestInto(primaryId, task.id);
+            else onMoveAfter(primaryId, task.id);
           }
           setDropMode('inside');
         }}
-        className={`group relative rounded-2xl transition-all outline-none hover:bg-[rgba(255,255,255,0.018)] focus:bg-[rgba(255,255,255,0.025)] ${isContextAncestor ? 'opacity-75' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
+        className={`group relative rounded-2xl transition-all outline-none hover:bg-[rgba(255,255,255,0.018)] focus:bg-[rgba(255,255,255,0.025)] ${selected ? 'bg-[var(--accent-soft)]/50 ring-1 ring-[var(--accent)]/55' : ''} ${isContextAncestor ? 'opacity-75' : ''} ${isJustCompleted ? 'brutal-row-bounce' : ''}`}
       >
         {/* BEFORE: top gradient wash + sharp top edge line — visually occupies the top of the row */}
         {isOver && dropMode === 'before' && (
