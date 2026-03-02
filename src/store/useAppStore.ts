@@ -21,68 +21,10 @@ const LEGACY_TASKS_KEY = 'too_much_to_do_legacy_tasks';
 const LEGACY_PROJECTS_KEY = 'too_much_to_do_legacy_projects';
 const CURRENT_VERSION = 1;
 
-const INITIAL_PROJECTS: Project[] = [
-  { id: 'proj-1', name: 'WRD Updates', parentId: null },
-  { id: 'proj-2', name: 'Advocacy program for BIOM8', parentId: null },
-  { id: 'proj-3', name: 'Habit sets website', parentId: null },
-  { id: 'proj-4', name: 'GRT Europe', parentId: null },
-  { id: 'proj-5', name: 'GRT Website Upgrade', parentId: null },
-];
-const LEGACY_BOOTSTRAP_PROJECT_COLORS = new Map([
-  ['proj-1', '#5ea1ff'],
-  ['proj-2', '#71d7c7'],
-  ['proj-3', '#f2b56b'],
-  ['proj-4', '#c792ea'],
-  ['proj-5', '#ef7d7d'],
-]);
+const INITIAL_PROJECTS: Project[] = [];
+const LEGACY_BOOTSTRAP_PROJECT_COLORS = new Map<string, string>();
 
-const INITIAL_TASKS: Task[] = [
-  {
-    id: '1',
-    title: 'Sales tax submission to CRA',
-    description: '',
-    status: 'next',
-    isStarred: true,
-    projectId: null,
-    area: 'Work',
-    dueDate: null,
-    dayPart: null,
-    parentId: null,
-    collapsed: false,
-    createdAt: Date.now(),
-    tags: ['admin'],
-  },
-  {
-    id: '2',
-    title: 'Double check DHL Express rates',
-    description: '',
-    status: 'next',
-    isStarred: true,
-    projectId: null,
-    area: 'Work',
-    dueDate: null,
-    dayPart: null,
-    parentId: null,
-    collapsed: false,
-    createdAt: Date.now(),
-    tags: ['shipping'],
-  },
-  {
-    id: '3',
-    title: 'Spider 4 instructional video',
-    description: '## Outline\n- script\n- edit pass\n- export',
-    status: 'scheduled',
-    isStarred: true,
-    projectId: 'proj-1',
-    area: 'Work',
-    dueDate: new Date().toISOString().slice(0, 10),
-    dayPart: 'morning',
-    parentId: null,
-    collapsed: false,
-    createdAt: Date.now(),
-    tags: ['content'],
-  },
-];
+const INITIAL_TASKS: Task[] = [];
 
 const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
