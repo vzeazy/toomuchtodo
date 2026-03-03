@@ -120,6 +120,22 @@ export function TaskTimerDot({ taskId, taskTitle }: { taskId: string, taskTitle:
             {isIntentionalDrag && (
                 <div style={{ position: 'absolute', left: '50%', top: '50%', zIndex: 9999, pointerEvents: 'none' }}>
 
+                    {/* The glowing anchor origin (where you started holding) */}
+                    <div
+                        className={isCancelingDrag ? "" : "timer-origin-pulse"}
+                        style={{
+                            position: 'absolute',
+                            left: 0, top: 0,
+                            transform: 'translate(-50%, -50%)',
+                            width: 14, height: 14,
+                            borderRadius: '50%',
+                            background: activeColor,
+                            boxShadow: `0 0 16px ${activeColor}`,
+                            opacity: isCancelingDrag ? 0.3 : 0.6,
+                            transition: 'background 0.2s, box-shadow 0.2s, opacity 0.2s',
+                        }}
+                    />
+
                     {/* The elastic stretch line */}
                     <motion.div
                         animate={{ width: dist, rotate: angle * (180 / Math.PI) }}
@@ -143,8 +159,15 @@ export function TaskTimerDot({ taskId, taskTitle }: { taskId: string, taskTitle:
                         style={{ position: 'absolute', left: 0, top: 0, zIndex: 2 }}
                     >
                         <motion.div
-                            animate={{ scale: isCancelingDrag ? 0.85 : 1 }}
-                            transition={{ duration: 0.15 }}
+                            animate={{
+                                scale: isCancelingDrag ? 0.85 : [1, 1.06, 1],
+                                textShadow: isCancelingDrag ? '0 0 10px rgba(255,50,50,0.5)' : ['none', `0 0 12px ${activeColor}`, 'none']
+                            }}
+                            transition={{
+                                duration: isCancelingDrag ? 0.15 : 1.5,
+                                repeat: isCancelingDrag ? 0 : Infinity,
+                                ease: "easeInOut"
+                            }}
                             style={{
                                 transform: 'translate(-50%, -50%)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -158,7 +181,6 @@ export function TaskTimerDot({ taskId, taskTitle }: { taskId: string, taskTitle:
                                 fontFamily: '"IBM Plex Mono", monospace',
                                 fontSize: 13,
                                 boxShadow: `0 8px 32px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.03)`,
-                                textShadow: isCancelingDrag ? '0 0 10px rgba(255,50,50,0.5)' : 'none',
                             }}
                         >
                             <TimerIcon size={14} strokeWidth={2.5} style={{ marginRight: 6, color: activeColor, transition: 'color 0.2s' }} />
@@ -177,28 +199,29 @@ export function TaskTimerDot({ taskId, taskTitle }: { taskId: string, taskTitle:
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerCancel}
                 title={isActiveForTask ? 'Stop timer' : 'Start timer'}
+                className={(!isActiveForTask && !isIntentionalDrag) ? "rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] text-[var(--text-muted)] hover:text-[var(--text-primary)]" : ""}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: isActiveForTask || isIntentionalDrag ? 18 : 14,
-                    height: isActiveForTask || isIntentionalDrag ? 18 : 14,
-                    color: isActiveForTask ? 'var(--app-bg)' : dotColor,
-                    backgroundColor: isActiveForTask ? dotColor : (isIntentionalDrag ? 'currentColor' : 'transparent'),
-                    borderRadius: '50%',
+                    color: isActiveForTask ? 'var(--app-bg)' : (isIntentionalDrag ? 'transparent' : undefined),
+                    backgroundColor: isActiveForTask ? dotColor : 'transparent',
+                    borderRadius: isActiveForTask ? '50%' : undefined,
+                    width: isActiveForTask ? 24 : undefined,
+                    height: isActiveForTask ? 24 : undefined,
                     cursor: isDragging ? 'grabbing' : 'pointer',
                     flexShrink: 0,
-                    transition: 'width 0.15s, height 0.15s, color 0.15s, background-color 0.15s, opacity 0.15s',
+                    transition: 'width 0.15s, height 0.15s, color 0.15s, background-color 0.15s, opacity 0.15s, border-radius 0.15s',
                     touchAction: 'none',
                     animation: isActiveForTask ? 'timerPulse 1.8s ease-in-out infinite' : 'none',
-                    opacity: isActiveForTask || isDragging || isCancelingDrag ? 1 : 0.6,
+                    opacity: isIntentionalDrag ? 0 : 1, // Full hide when dragging so origin anchor looks cool 
                     position: 'relative',
                     zIndex: 10,
                 }}
             >
                 <TimerIcon
-                    size={isActiveForTask || isIntentionalDrag ? 12 : 11}
-                    strokeWidth={isActiveForTask || isIntentionalDrag ? 3 : 2.5}
+                    size={isActiveForTask ? 14 : 15}
+                    strokeWidth={isActiveForTask ? 3 : 1.5}
                 />
             </div>
 
