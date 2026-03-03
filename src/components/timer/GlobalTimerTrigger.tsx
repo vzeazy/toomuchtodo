@@ -1,45 +1,80 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../../store/useAppStore';
 
-const DEFAULT_BLOCK = 1800; // 30 min
-const MAX_BLOCK = 7200;     // 120 min
-const MIN_BLOCK = 300;      // 5 min
-const SNAP_SECS = 300;
+// ─── Scale constants ───────────────────────────────────────────────────────────
+const MIN_BLOCK = 60;    // 1 min
+const MAX_BLOCK = 7200;  // 2 h
+const TRACK_H = 480;     // physical drag height in px
 
-// Physical track dimensions
-const TRACK_H = 400; // px — actual usable drag height
-const TRACK_TOP_OFFSET = TRACK_H / 2; // track is vertically centered (top: 50vh - TRACK_TOP_OFFSET)
-
-const MARKERS = [
-    { secs: 300, label: '5m' },
-    { secs: 900, label: '15m' },
-    { secs: 1800, label: '30m' },
-    { secs: 3600, label: '1h' },
-    { secs: 5400, label: '1.5h' },
-    { secs: 7200, label: '2h' },
-];
-
-function snapDuration(secs: number) {
-    return Math.max(MIN_BLOCK, Math.min(MAX_BLOCK, Math.round(secs / SNAP_SECS) * SNAP_SECS));
-}
-
-// Piecewise: 5m-30m = bottom-half, 30m-2h = top-half
+// Three-segment piecewise scale:
+//   Segment A: 1m – 10m  → progress 0.00 – 0.25  (dense zone for fine control)
+//   Segment B: 10m – 30m → progress 0.25 – 0.50
+//   Segment C: 30m – 2h  → progress 0.50 – 1.00
 function durationToProgress(secs: number): number {
     secs = Math.max(MIN_BLOCK, Math.min(MAX_BLOCK, secs));
-    if (secs <= 1800) {
-        return ((secs - 300) / 1500) * 0.5;
-    }
+    if (secs <= 600) return ((secs - 60) / 540) * 0.25;
+    if (secs <= 1800) return 0.25 + ((secs - 600) / 1200) * 0.25;
     return 0.5 + ((secs - 1800) / 5400) * 0.5;
 }
 
 function progressToDuration(p: number): number {
     p = Math.max(0, Math.min(1, p));
-    if (p <= 0.5) return 300 + (p / 0.5) * 1500;
+    if (p <= 0.25) return 60 + (p / 0.25) * 540;
+    if (p <= 0.5) return 600 + ((p - 0.25) / 0.25) * 1200;
     return 1800 + ((p - 0.5) / 0.5) * 5400;
 }
 
-function formatMins(secs: number) {
+// ─── Magnetic snap ─────────────────────────────────────────────────────────────
+// Major snaps: hardcoded "gravity wells". Snap radius scales with duration.
+const MAJOR_SNAP_POINTS = [60, 300, 600, 900, 1200, 1800, 2700, 3600, 5400, 7200];
+function snapRadius(secs: number) {
+    if (secs <= 120) return 25;   // 25s  near 1m
+    if (secs <= 600) return 45;   // 45s  near 5m & 10m
+    if (secs <= 1800) return 90;  // 90s  near 15m, 20m, 30m
+    return 150;                   // 2.5m near 45m, 1h, 1.5h, 2h
+}
+
+function smartSnap(raw: number): number {
+    raw = Math.max(MIN_BLOCK, Math.min(MAX_BLOCK, raw));
+    // Magnetic pull
+    for (const major of MAJOR_SNAP_POINTS) {
+        if (Math.abs(raw - major) <= snapRadius(major)) return major;
+    }
+    // Fine-grain fallback: 1-min below 10m, 5-min otherwise
+    if (raw <= 600) return Math.round(raw / 60) * 60;
+    return Math.round(raw / 300) * 300;
+}
+
+// ─── Tick definitions ──────────────────────────────────────────────────────────
+type TickStyle = 'major' | 'minor' | 'micro';
+interface Tick { secs: number; label: string | null; style: TickStyle; }
+
+const TICKS: Tick[] = [
+    // 1-min granularity from 1–10m
+    { secs: 60, label: '1m', style: 'minor' },
+    { secs: 120, label: null, style: 'micro' },
+    { secs: 180, label: null, style: 'micro' },
+    { secs: 240, label: null, style: 'micro' },
+    { secs: 300, label: '5m', style: 'major' },
+    { secs: 360, label: null, style: 'micro' },
+    { secs: 420, label: null, style: 'micro' },
+    { secs: 480, label: null, style: 'micro' },
+    { secs: 540, label: null, style: 'micro' },
+    { secs: 600, label: '10m', style: 'major' },
+    // 5-min from 10–30m
+    { secs: 900, label: '15m', style: 'major' },
+    { secs: 1200, label: '20m', style: 'minor' },
+    { secs: 1500, label: '25m', style: 'micro' },
+    { secs: 1800, label: '30m', style: 'major' },
+    // 15-min from 30m–2h
+    { secs: 2700, label: '45m', style: 'minor' },
+    { secs: 3600, label: '1h', style: 'major' },
+    { secs: 5400, label: '1.5h', style: 'minor' },
+    { secs: 7200, label: '2h', style: 'major' },
+];
+
+function formatLabel(secs: number) {
     if (secs >= 3600) {
         const h = Math.floor(secs / 3600);
         const m = Math.round((secs % 3600) / 60);
@@ -48,26 +83,27 @@ function formatMins(secs: number) {
     return `${Math.round(secs / 60)}m`;
 }
 
+// ─── Component ─────────────────────────────────────────────────────────────────
 export function GlobalTimerTrigger() {
-    const { timer, startTimer, stopTimer } = useAppStore();
-    const [dragDuration, setDragDuration] = useState(DEFAULT_BLOCK);
+    const { timer, startTimer } = useAppStore();
+    const [dragDuration, setDragDuration] = useState(1800); // default 30m
     const [isDragging, setIsDragging] = useState(false);
     const [isCanceling, setIsCanceling] = useState(false);
     const trackRef = useRef<HTMLDivElement>(null);
 
-    // progress 0 = bottom (5m), progress 1 = top (2h)
+    // Progress and pixel position of the grabber inside the track div
     const progress = durationToProgress(dragDuration);
+    const grabberTop = (1 - progress) * TRACK_H; // px from top of track
 
-    // Grabber top position inside the track div (progress=1 → top=0, progress=0 → top=TRACK_H)
-    const grabberTop = (1 - progress) * TRACK_H;
+    // Absolute screen Y of the grabber (for HUD positioning)
+    const trackTopPx = typeof window !== 'undefined' ? window.innerHeight / 2 - TRACK_H / 2 : 0;
+    const grabberScreenY = trackTopPx + grabberTop;
 
-    const getProgressFromEvent = useCallback((e: React.PointerEvent) => {
+    const getProgressFromEvent = useCallback((e: PointerEvent | React.PointerEvent) => {
         const track = trackRef.current;
         if (!track) return 0.5;
         const rect = track.getBoundingClientRect();
-        // p=1 at top of rect, p=0 at bottom
-        const p = 1 - (e.clientY - rect.top) / rect.height;
-        return Math.max(0, Math.min(1, p));
+        return 1 - (e.clientY - rect.top) / rect.height;
     }, []);
 
     const onPointerDown = useCallback((e: React.PointerEvent) => {
@@ -75,9 +111,8 @@ export function GlobalTimerTrigger() {
         e.currentTarget.setPointerCapture(e.pointerId);
         setIsDragging(true);
         setIsCanceling(false);
-        // Snap immediately to where user clicked
         const p = getProgressFromEvent(e);
-        setDragDuration(snapDuration(progressToDuration(p)));
+        setDragDuration(smartSnap(progressToDuration(p)));
     }, [getProgressFromEvent]);
 
     const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -85,36 +120,35 @@ export function GlobalTimerTrigger() {
         const track = trackRef.current;
         if (!track) return;
         const rect = track.getBoundingClientRect();
-        // Cancel zone: significantly below the track bottom
         if (e.clientY > rect.bottom + 60) {
             setIsCanceling(true);
             return;
         }
         setIsCanceling(false);
         const p = 1 - (e.clientY - rect.top) / rect.height;
-        setDragDuration(snapDuration(progressToDuration(p)));
+        setDragDuration(smartSnap(progressToDuration(p)));
     }, [isDragging]);
 
-    const onPointerUp = useCallback((e: React.PointerEvent) => {
+    const onPointerUp = useCallback((_e: React.PointerEvent) => {
         if (!isDragging) return;
         setIsDragging(false);
         if (isCanceling) {
             setIsCanceling(false);
-            setDragDuration(DEFAULT_BLOCK);
+            setDragDuration(1800);
             return;
         }
         startTimer(dragDuration);
-        setDragDuration(DEFAULT_BLOCK);
+        setDragDuration(1800);
     }, [isDragging, isCanceling, dragDuration, startTimer]);
 
-    // While timer is active: show a minimal red strip (timer overlay handles the rest)
-    if (timer.active) {
-        return null; // GlobalTimerOverlay owns the UI when active
-    }
+    // Hide the trigger while timer is active (overlay owns the screen)
+    if (timer.active) return null;
+
+    const accentColor = 'var(--accent)';
 
     return (
         <>
-            {/* Backdrop blur when dragging */}
+            {/* Backdrop blur during drag */}
             <AnimatePresence>
                 {isDragging && (
                     <motion.div
@@ -125,8 +159,8 @@ export function GlobalTimerTrigger() {
                         style={{
                             position: 'fixed',
                             inset: 0,
-                            background: 'rgba(0,0,0,0.25)',
-                            backdropFilter: 'blur(8px)',
+                            background: 'rgba(0,0,0,0.3)',
+                            backdropFilter: 'blur(10px)',
                             zIndex: 9000,
                             pointerEvents: 'none',
                         }}
@@ -134,7 +168,7 @@ export function GlobalTimerTrigger() {
                 )}
             </AnimatePresence>
 
-            {/* The drag track — vertically centered on screen, on the right edge */}
+            {/* ── The drag track ─────────────────────────────────────────── */}
             <div
                 ref={trackRef}
                 onPointerDown={onPointerDown}
@@ -143,19 +177,18 @@ export function GlobalTimerTrigger() {
                 onPointerCancel={onPointerUp}
                 style={{
                     position: 'fixed',
-                    // Vertically center the track
-                    top: `calc(50vh - ${TRACK_TOP_OFFSET}px)`,
+                    top: `calc(50vh - ${TRACK_H / 2}px)`,
                     right: 0,
-                    width: isDragging ? 64 : 28,
+                    width: isDragging ? 72 : 28,
                     height: TRACK_H,
                     zIndex: 9500,
-                    cursor: isDragging ? 'ns-resize' : 'pointer',
+                    cursor: isDragging ? 'ns-resize' : 'grab',
                     touchAction: 'none',
-                    transition: 'width 0.2s',
                     userSelect: 'none',
+                    transition: 'width 0.18s ease',
                 }}
             >
-                {/* Rail line (only when dragging) */}
+                {/* Vertical rail */}
                 <AnimatePresence>
                     {isDragging && (
                         <motion.div
@@ -165,144 +198,189 @@ export function GlobalTimerTrigger() {
                             exit={{ opacity: 0 }}
                             style={{
                                 position: 'absolute',
-                                right: 18,
+                                right: 20,
                                 top: 0,
                                 bottom: 0,
-                                width: 1.5,
-                                background: 'rgba(255,255,255,0.08)',
-                                borderRadius: 99,
+                                width: 1,
+                                background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.06) 15%, rgba(255,255,255,0.06) 85%, transparent)',
                             }}
                         />
                     )}
                 </AnimatePresence>
 
-                {/* Markers (only when dragging) */}
+                {/* ── Ticks ──────────────────────────────────────────────── */}
                 <AnimatePresence>
-                    {isDragging && MARKERS.map((m) => {
-                        const mp = durationToProgress(m.secs);
-                        const mt = (1 - mp) * TRACK_H;
-                        const isActive = dragDuration >= m.secs;
+                    {isDragging && TICKS.map((tick) => {
+                        const tp = durationToProgress(tick.secs);
+                        const tickTop = (1 - tp) * TRACK_H;
+                        const isActive = dragDuration >= tick.secs;
+                        const isCurrent = dragDuration === tick.secs;
+
+                        // Style variants
+                        const isMajor = tick.style === 'major';
+                        const isMinor = tick.style === 'minor';
+                        const isMicro = tick.style === 'micro';
+
+                        const dashW = isMajor ? 14 : isMinor ? 9 : 4;
+                        const dotH = isMajor ? 1.5 : isMinor ? 1.5 : 1;
+                        const labelOpacity = isMajor ? 1 : isMinor ? 0.7 : 0;
+                        const labelSize = isMajor ? 9 : 8;
+                        const activeColor = isCanceling ? 'var(--danger)' : accentColor;
+
                         return (
                             <motion.div
-                                key={m.secs}
-                                initial={{ opacity: 0, x: 8 }}
+                                key={tick.secs}
+                                initial={{ opacity: 0, x: 6 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 8 }}
-                                transition={{ delay: 0.05 }}
+                                exit={{ opacity: 0, x: 6 }}
+                                transition={{ delay: 0.03, duration: 0.12 }}
                                 style={{
                                     position: 'absolute',
                                     right: 0,
-                                    top: mt,
+                                    top: tickTop,
                                     transform: 'translateY(-50%)',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: 8,
+                                    gap: 6,
                                     pointerEvents: 'none',
                                 }}
                             >
-                                <span style={{
-                                    fontSize: 9,
-                                    fontWeight: 800,
-                                    color: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.2)',
-                                    fontFamily: '"IBM Plex Mono", monospace',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.1em',
-                                    transition: 'color 0.2s, text-shadow 0.2s',
-                                    textShadow: isActive ? '0 0 8px var(--accent)' : 'none',
-                                    whiteSpace: 'nowrap',
-                                }}>
-                                    {m.label}
-                                </span>
+                                {/* Label */}
+                                {tick.label && (
+                                    <span style={{
+                                        fontSize: labelSize,
+                                        fontWeight: isMajor ? 800 : 600,
+                                        fontFamily: '"IBM Plex Mono", monospace',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.07em',
+                                        whiteSpace: 'nowrap',
+                                        transition: 'color 0.15s, text-shadow 0.15s',
+                                        color: isActive
+                                            ? (isCanceling ? 'rgba(255,100,100,0.9)' : 'rgba(255,255,255,0.85)')
+                                            : 'rgba(255,255,255,0.18)',
+                                        textShadow: (isActive && isMajor)
+                                            ? `0 0 10px ${activeColor}`
+                                            : 'none',
+                                        opacity: labelOpacity,
+                                    }}>
+                                        {tick.label}
+                                    </span>
+                                )}
+
+                                {/* Tick mark / dot */}
                                 <div style={{
-                                    width: isActive ? 10 : 5,
-                                    height: 1.5,
-                                    borderRadius: 1,
-                                    background: isActive ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                                    transition: 'all 0.2s',
+                                    width: isActive ? dashW : Math.max(2, dashW * 0.5),
+                                    height: dotH,
+                                    borderRadius: 99,
+                                    background: isActive
+                                        ? (isCanceling ? 'rgba(255,100,100,0.7)' : activeColor)
+                                        : 'rgba(255,255,255,0.08)',
+                                    transition: 'width 0.12s, background 0.15s',
+                                    boxShadow: (isActive && isMajor) ? `0 0 6px ${activeColor}` : 'none',
                                 }} />
                             </motion.div>
                         );
                     })}
                 </AnimatePresence>
 
-                {/* Grabber dot — positioned absolutely inside the track */}
-                <motion.div
-                    animate={{ top: isDragging ? grabberTop : TRACK_H / 2 }}
-                    transition={{ type: 'spring', damping: 28, stiffness: 340, mass: 0.4 }}
+                {/* ── Grabber ────────────────────────────────────────────── */}
+                {/* Outer div owns positioning — no framer-motion so translateY(-50%) is never overridden.
+                     During drag: instant (top is set directly from pointer).
+                     On release / not dragging: CSS spring transition snaps into place. */}
+                <div
                     style={{
                         position: 'absolute',
-                        right: 10,
-                        // top set by animate above
+                        right: 8,
+                        top: isDragging ? grabberTop : TRACK_H / 2,
                         transform: 'translateY(-50%)',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 6,
+                        gap: 5,
                         pointerEvents: 'none',
+                        transition: isDragging
+                            ? 'none'
+                            : 'top 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
                     }}
                 >
-                    {/* The circle */}
-                    <div style={{
-                        width: isDragging ? 14 : 8,
-                        height: isDragging ? 14 : 8,
-                        borderRadius: '50%',
-                        background: isCanceling ? 'var(--danger)' : 'var(--accent)',
-                        boxShadow: isDragging
-                            ? `0 0 16px ${isCanceling ? 'var(--danger)' : 'var(--accent)'}, 0 0 40px ${isCanceling ? 'var(--danger)' : 'var(--accent)'}40`
-                            : '0 2px 8px rgba(0,0,0,0.3)',
-                        transition: 'width 0.15s, height 0.15s, background 0.2s, box-shadow 0.2s',
-                        flexShrink: 0,
-                    }} />
-                    {/* Short horizontal tail */}
-                    <div style={{
-                        width: isDragging ? 24 : 12,
-                        height: 2,
-                        borderRadius: 1,
-                        background: isCanceling ? 'var(--danger)' : 'var(--accent)',
-                        opacity: isDragging ? 0.8 : 0.4,
-                        transition: 'width 0.2s, opacity 0.2s, background 0.2s',
-                    }} />
-                </motion.div>
+                    {/* Circle — framer handles size & glow only */}
+                    <motion.div
+                        animate={{
+                            width: isDragging ? 13 : 7,
+                            height: isDragging ? 13 : 7,
+                            boxShadow: isDragging
+                                ? `0 0 12px ${isCanceling ? 'var(--danger)' : accentColor}, 0 0 30px ${isCanceling ? 'var(--danger)' : accentColor}55`
+                                : '0 1px 6px rgba(0,0,0,0.4)',
+                        }}
+                        transition={{ duration: 0.15 }}
+                        style={{
+                            borderRadius: '50%',
+                            background: isCanceling ? 'var(--danger)' : accentColor,
+                            flexShrink: 0,
+                            transition: 'background 0.2s',
+                        }}
+                    />
+                    {/* Tail */}
+                    <motion.div
+                        animate={{
+                            width: isDragging ? 22 : 11,
+                            opacity: isDragging ? 0.75 : 0.35,
+                        }}
+                        transition={{ duration: 0.15 }}
+                        style={{
+                            height: 1.5,
+                            borderRadius: 99,
+                            background: isCanceling ? 'var(--danger)' : accentColor,
+                            transition: 'background 0.2s',
+                        }}
+                    />
+                </div>
             </div>
 
-            {/* HUD: Duration display to the left of the track */}
+            {/* ── Floating HUD — follows grabber, clamped to viewport ─────── */}
             <AnimatePresence>
                 {isDragging && (
                     <motion.div
                         key="hud"
-                        initial={{ opacity: 0, scale: 0.9, x: 10 }}
-                        animate={{ opacity: 1, scale: 1, x: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, x: 10 }}
+                        initial={{ opacity: 0, scale: 0.92, x: 10 }}
+                        animate={{
+                            opacity: 1,
+                            scale: 1,
+                            x: 0,
+                            top: Math.max(16, Math.min(grabberScreenY - 36, window.innerHeight - 100)),
+                        }}
+                        exit={{ opacity: 0, scale: 0.92, x: 10 }}
+                        transition={{
+                            opacity: { duration: 0.15 },
+                            scale: { duration: 0.15 },
+                            top: { type: 'spring', damping: 30, stiffness: 320, mass: 0.4 },
+                        }}
                         style={{
                             position: 'fixed',
-                            // Vertically follow the grabber
-                            top: `calc(50vh - ${TRACK_TOP_OFFSET}px + ${grabberTop}px)`,
-                            right: 76,
-                            transform: 'translateY(-50%)',
+                            right: 84,
                             zIndex: 9600,
                             pointerEvents: 'none',
-                            transition: 'top 0s', // animate top via framer-motion separately below
                         }}
                     >
                         <div style={{
-                            background: 'rgba(12, 12, 12, 0.92)',
-                            backdropFilter: 'blur(20px)',
-                            border: `1px solid ${isCanceling ? 'var(--danger)' : 'rgba(255,255,255,0.1)'}`,
-                            borderRadius: 18,
-                            padding: '12px 22px',
-                            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                            background: 'rgba(10,10,10,0.92)',
+                            backdropFilter: 'blur(24px)',
+                            border: `1px solid ${isCanceling ? 'rgba(255,80,80,0.35)' : 'rgba(255,255,255,0.09)'}`,
+                            borderRadius: 16,
+                            padding: '10px 20px',
+                            minWidth: 110,
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            minWidth: 120,
+                            boxShadow: '0 16px 40px rgba(0,0,0,0.55)',
                             transition: 'border-color 0.2s',
                         }}>
                             {isCanceling ? (
                                 <span style={{
                                     color: 'var(--danger)',
                                     fontWeight: 800,
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     textTransform: 'uppercase',
-                                    letterSpacing: '0.12em',
+                                    letterSpacing: '0.1em',
                                 }}>
                                     Cancel
                                 </span>
@@ -310,23 +388,23 @@ export function GlobalTimerTrigger() {
                                 <>
                                     <span style={{
                                         fontFamily: '"IBM Plex Mono", monospace',
-                                        fontSize: 32,
+                                        fontSize: 30,
                                         fontWeight: 800,
                                         color: '#fff',
                                         letterSpacing: '-0.04em',
                                         lineHeight: 1,
                                     }}>
-                                        {formatMins(dragDuration)}
+                                        {formatLabel(dragDuration)}
                                     </span>
                                     <span style={{
-                                        fontSize: 9,
-                                        color: 'rgba(255,255,255,0.35)',
+                                        fontSize: 8,
+                                        color: 'rgba(255,255,255,0.3)',
                                         fontWeight: 700,
                                         textTransform: 'uppercase',
-                                        letterSpacing: '0.12em',
-                                        marginTop: 6,
+                                        letterSpacing: '0.14em',
+                                        marginTop: 5,
                                     }}>
-                                        Set Timer · Release
+                                        Release to start
                                     </span>
                                 </>
                             )}
