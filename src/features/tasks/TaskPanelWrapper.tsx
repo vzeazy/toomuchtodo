@@ -68,12 +68,14 @@ export const TaskPanelWrapper: React.FC<{
     const [isPictureInPictureOpen, setIsPictureInPictureOpen] = React.useState(false);
     const pictureInPictureBridgeRef = React.useRef<TaskPanelPictureInPictureBridgeHandle>(null);
     const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
+    const todayDateStr = new Date().toISOString().slice(0, 10);
+    const isDayLikeView = panel.view === 'day' || panel.view === 'today';
 
     const filteredTasks = useMemo(() => {
       let result = tasks;
       if (selectedArea) result = result.filter((task) => task.area === selectedArea);
       if (panel.view === 'focus') result = result.filter((task) => task.isStarred && task.status !== 'completed');
-      else if (panel.view === 'today') result = result.filter((task) => task.dueDate === new Date().toISOString().slice(0, 10));
+      else if (panel.view === 'today') result = result.filter((task) => task.dueDate === todayDateStr);
       else if (panel.view === 'day') result = result.filter((task) => task.dueDate === panel.dateStr);
       else if (panel.view === 'scheduled') result = result.filter((task) => task.status === 'scheduled' || (task.status === 'completed' && task.dueDate));
       else if (panel.view !== 'all' && panel.view !== 'planner' && panel.view !== 'settings' && panel.view !== 'search') {
@@ -87,7 +89,7 @@ export const TaskPanelWrapper: React.FC<{
         result = result.filter((task) => task.status !== 'completed');
       }
       return result;
-    }, [tasks, panel.view, panel.dateStr, panel.projectId, projects, selectedArea, settings.showCompletedTasks]);
+    }, [tasks, panel.view, panel.dateStr, panel.projectId, projects, selectedArea, settings.showCompletedTasks, todayDateStr]);
 
     const matchedTaskIds = useMemo(() => new Set(filteredTasks.map((task) => task.id)), [filteredTasks]);
 
@@ -136,7 +138,7 @@ export const TaskPanelWrapper: React.FC<{
         allTasks={tasks}
         projects={projects}
         headerTitle={headerTitle}
-        currentView={panel.view}
+        currentView={panel.view === 'today' ? 'day' : panel.view}
         selectedArea={selectedArea}
         selectedProjectId={panel.projectId}
         expandedTaskId={expandedTaskId}
@@ -146,7 +148,7 @@ export const TaskPanelWrapper: React.FC<{
         groupDayViewByPart={Boolean(settings.groupDayViewByPart)}
         backLabel={panel.view === 'day' ? 'Back to week' : undefined}
         onExpandTask={setExpandedTaskId}
-        onAddTask={(title, dayPart) => addTask(title, panel.view === 'day' ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, panel.view === 'day' ? panel.dateStr : null, false, null, panel.view === 'day' ? (dayPart || 'morning') : null)}
+        onAddTask={(title, dayPart) => addTask(title, isDayLikeView ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, isDayLikeView ? (panel.view === 'today' ? todayDateStr : panel.dateStr) : null, false, null, isDayLikeView ? (dayPart || 'morning') : null)}
         onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : (parentTask.projectId ? 'open' : 'next')) : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
         onTaskListModeChange={setTaskListMode}
         onToggleStar={toggleStar}

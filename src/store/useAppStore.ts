@@ -46,6 +46,7 @@ const INITIAL_TIMER_STATE: TimerState = {
   linkedTaskId: null,
   sessionTitle: null,
   lastTick: null,
+  finished: false,
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -453,6 +454,7 @@ export const useAppStore = () => {
         linkedTaskId,
         sessionTitle,
         lastTick: Date.now(),
+        finished: false,
       }
     }));
   }, []);
@@ -492,7 +494,7 @@ export const useAppStore = () => {
         // Option to handle timer completion here (e.g. stop automatically)
         return {
           ...prev,
-          timer: { ...prev.timer, remaining: 0, active: false, paused: false, lastTick: null }
+          timer: { ...prev.timer, remaining: 0, paused: true, active: true, finished: true, lastTick: null }
         };
       }
 

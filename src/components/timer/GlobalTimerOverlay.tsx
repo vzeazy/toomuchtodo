@@ -6,7 +6,8 @@ import { TaskPanelPictureInPictureBridge, TaskPanelPictureInPictureBridgeHandle 
 import { getThemeVariables } from '../../lib/theme';
 
 // Dots grid size in px (diameter + gap)
-const DOT_D = 3;
+const DOT_D = 4;
+const DOT_D_IDLE = 3;
 const DOT_GAP = 12; // slightly wider for better aesthetic and performance
 
 export function GlobalTimerOverlay() {
@@ -45,7 +46,7 @@ export function GlobalTimerOverlay() {
 
     // Once < 10% remaining, shift to danger colour
     const remainFraction = timer.duration > 0 ? timer.remaining / timer.duration : 0;
-    const isDanger = remainFraction < 0.1 && timer.active;
+    const isDanger = (remainFraction < 0.1 && timer.active) || timer.finished;
 
     // Format counter
     const hh = Math.floor(timer.remaining / 3600);
@@ -89,8 +90,9 @@ export function GlobalTimerOverlay() {
             ctx.fillStyle = dotColor;
 
             // Global pulse effect for glowing without expensive shadowBlur
-            const pulse = 0.85 + 0.15 * Math.sin(time / 400); // 0.7 to 1.0 opacity
-            ctx.globalAlpha = timer.paused ? 0.3 : pulse;
+            const pulseAmount = timer.finished ? 0.4 * Math.sin(time / 200) : 0.15 * Math.sin(time / 400);
+            const pulse = timer.finished ? 0.6 + pulseAmount : 0.85 + pulseAmount;
+            ctx.globalAlpha = (timer.paused && !timer.finished) ? 0.3 : pulse;
 
             ctx.beginPath();
 
@@ -109,12 +111,12 @@ export function GlobalTimerOverlay() {
             }
             ctx.fill();
 
-            if (!timer.paused) {
+            if (!timer.paused || timer.finished) {
                 animationFrameId = requestAnimationFrame(render);
             }
         };
 
-        if (timer.paused) {
+        if (timer.paused && !timer.finished) {
             // Render a static frame if paused
             render(0);
         } else {
@@ -141,8 +143,8 @@ export function GlobalTimerOverlay() {
     const ClockView = ({ sizeScale = 1 }: { sizeScale?: number }) => (
         <motion.div
             animate={{
-                scale: timer.paused ? 0.95 * sizeScale : 1 * sizeScale,
-                opacity: timer.paused ? 0.4 : 1,
+                scale: (timer.paused && !timer.finished) ? 0.95 * sizeScale : 1 * sizeScale,
+                opacity: (timer.paused && !timer.finished) ? 0.4 : 1,
             }}
             transition={{ duration: 0.5, ease: 'easeInOut' }}
             style={{
@@ -152,17 +154,30 @@ export function GlobalTimerOverlay() {
                 gap: 12 * sizeScale,
             }}
         >
-            <span style={{
-                fontFamily: '"IBM Plex Mono", "JetBrains Mono", monospace',
-                fontSize: 140 * sizeScale,
-                fontWeight: 800,
-                color: 'white',
-                lineHeight: 1,
-                letterSpacing: '-0.06em',
-                textShadow: `0 0 ${60 * sizeScale}px ${accentColor}, 0 0 ${100 * sizeScale}px ${accentColor}`,
-            }}>
-                {timeStr}
-            </span>
+            <motion.span
+                animate={timer.finished ? {
+                    scale: [1, 1.05, 1],
+                    textShadow: [
+                        `0 0 ${60 * sizeScale}px ${accentColor}, 0 0 ${100 * sizeScale}px ${accentColor}`,
+                        `0 0 ${80 * sizeScale}px ${accentColor}, 0 0 ${130 * sizeScale}px ${accentColor}`,
+                        `0 0 ${60 * sizeScale}px ${accentColor}, 0 0 ${100 * sizeScale}px ${accentColor}`
+                    ]
+                } : {
+                    scale: 1,
+                    textShadow: `0 0 ${60 * sizeScale}px ${accentColor}, 0 0 ${100 * sizeScale}px ${accentColor}`
+                }}
+                transition={{ duration: 1.5, repeat: timer.finished ? Infinity : 0, ease: "easeInOut" }}
+                style={{
+                    fontFamily: '"IBM Plex Mono", "JetBrains Mono", monospace',
+                    fontSize: 140 * sizeScale,
+                    fontWeight: 800,
+                    color: 'white',
+                    lineHeight: 1,
+                    letterSpacing: '-0.06em',
+                }}
+            >
+                {timer.finished ? '00:00' : timeStr}
+            </motion.span>
 
             <div style={{
                 fontSize: 15 * sizeScale,
@@ -172,7 +187,7 @@ export function GlobalTimerOverlay() {
                 letterSpacing: '0.3em',
                 marginTop: -8 * sizeScale,
             }}>
-                {timer.paused ? 'Timer Paused' : (timer.sessionTitle || 'Deep Focus')}
+                {timer.finished ? 'SESSION COMPLETE' : (timer.paused ? 'Timer Paused' : (timer.sessionTitle || 'Deep Focus'))}
             </div>
         </motion.div>
     );
@@ -233,6 +248,7 @@ export function GlobalTimerOverlay() {
                             inset: 0,
                             background: 'rgba(0, 0, 0, 0.45)',
                             backdropFilter: 'blur(24px)',
+                            WebkitBackdropFilter: 'blur(24px)', // iPad fix
                             zIndex: 1,
                         }} />
 

@@ -57,7 +57,7 @@ export const TaskModal: React.FC<{
     setIsNotesExpanded(false);
     setDragTarget(null);
     setIsDraggingSubtask(false);
-  }, [task.id, task.description]);
+  }, [task.id]);
 
   useEffect(() => {
     if (!isDraggingSubtask) return;

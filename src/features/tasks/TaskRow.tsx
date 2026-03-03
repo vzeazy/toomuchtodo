@@ -234,7 +234,7 @@ export const TaskRow: React.FC<{
         </div>
         <TaskCheckbox checked={task.status === 'completed'} onToggle={() => onToggleComplete(task.id)} className={compact ? 'h-4 w-4' : 'h-[18px] w-[18px]'} />
 
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
           <div className="flex items-center">
             {isEditingTitle ? (
               <input
@@ -276,12 +276,12 @@ export const TaskRow: React.FC<{
           )}
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <div className={`flex items-center gap-1 transition-opacity ${task.isStarred || showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+          <div className={`absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-1 transition-opacity ${task.isStarred || showMenu ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100'}`}>
             <TaskTimerDot taskId={task.id} taskTitle={task.title} />
             <button
               type="button"
               onClick={(event) => { event.stopPropagation(); onToggleStar(task.id); }}
+              tabIndex={task.isStarred || showMenu ? 0 : -1}
               className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${task.isStarred ? 'text-yellow-400' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
               title="Toggle star"
             >
@@ -295,6 +295,7 @@ export const TaskRow: React.FC<{
                 updateMenuPosition();
                 setShowMenu((prev) => !prev);
               }}
+              tabIndex={task.isStarred || showMenu ? 0 : -1}
               className={`rounded p-1 transition-colors hover:bg-[var(--panel-alt-bg)] ${showMenu ? 'bg-[var(--panel-alt-bg)] text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`}
               title="Task actions"
             >
@@ -302,14 +303,13 @@ export const TaskRow: React.FC<{
             </button>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="text-[var(--text-muted)] opacity-60" />}
-            {childCount > 0 && (
-              <span className="rounded-full bg-[var(--panel-alt-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--text-muted)]">
-                {childCount === 1 ? '1 subtask' : `${childCount} subtasks`}
-              </span>
-            )}
-          </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {task.description.trim() && <AlignLeft size={13} strokeWidth={1.5} className="text-[var(--text-muted)] opacity-60" />}
+          {childCount > 0 && (
+            <span className="rounded-full bg-[var(--panel-alt-bg)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[var(--text-muted)]">
+              {childCount === 1 ? '1 subtask' : `${childCount} subtasks`}
+            </span>
+          )}
         </div>
       </div>
 

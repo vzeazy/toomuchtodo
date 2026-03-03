@@ -166,6 +166,7 @@ export default function App() {
   const newTaskInputRef = useRef<HTMLInputElement>(null);
   const sidebarSearchRef = useRef<HTMLInputElement>(null);
 
+  const todayDateKey = formatDateKey(new Date());
   const weekDays = useMemo(() => getWeekDays(currentWeekOffset, settings.startPlannerOnToday), [currentWeekOffset, settings.startPlannerOnToday]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDays), [weekDays]);
   const selectedDayLabel = useMemo(() => {
@@ -191,14 +192,14 @@ export default function App() {
     return {
       inbox: activeTasks.filter((task) => task.status === 'inbox').length,
       focus: activeTasks.filter((task) => task.isStarred && task.status !== 'completed').length,
-      today: activeTasks.filter((task) => task.dueDate === new Date().toISOString().slice(0, 10) && task.status !== 'completed').length,
+      today: activeTasks.filter((task) => task.dueDate === todayDateKey && task.status !== 'completed').length,
       next: activeTasks.filter((task) => task.status === 'next').length,
       waiting: activeTasks.filter((task) => task.status === 'waiting').length,
       scheduled: activeTasks.filter((task) => task.status === 'scheduled' || (task.status === 'completed' && task.dueDate)).length,
       someday: activeTasks.filter((task) => task.status === 'someday').length,
       completed: tasks.filter((task) => task.status === 'completed').length,
     };
-  }, [tasks, settings.showCompletedTasks]);
+  }, [tasks, settings.showCompletedTasks, todayDateKey]);
 
   const searchResults = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
@@ -422,7 +423,6 @@ export default function App() {
           </button>
           <div className="min-w-0 items-baseline gap-3 sm:flex">
             <div className="text-[14px] font-bold uppercase tracking-[0.14em] text-[var(--text-primary)]">Too Much Todo</div>
-            <div className="section-kicker hidden text-[10px] font-medium uppercase text-[var(--text-muted)] sm:block">Focus System</div>
           </div>
           <button
             type="button"
@@ -455,8 +455,8 @@ export default function App() {
             {currentView === 'planner' && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] sm:ml-3">{weekRangeLabel}</span>}
             {currentView === 'day' && selectedDayLabel && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] sm:ml-3">{selectedDayLabel}</span>}
           </div>
-          <div className="relative order-4 w-full sm:order-none sm:ml-4 sm:w-auto">
-            <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex w-full items-center justify-between gap-1 rounded-full border soft-divider px-3 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:w-auto sm:justify-start">
+          <div className="relative order-4 hidden w-full sm:order-none sm:ml-4 sm:block sm:w-auto">
+            <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex w-full items-center justify-between gap-1 rounded-full border soft-divider px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:w-auto sm:justify-start">
               <span className="font-medium">{selectedArea || 'All Areas'}</span>
               <ChevronDown size={14} />
             </button>
@@ -487,10 +487,9 @@ export default function App() {
                     type="button"
                     onClick={() => setPlannerWidthMode(option.id)}
                     className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all sm:px-2.5 ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                    title={option.label}
                   >
                     <Icon size={13} />
-                    <span className="hidden sm:inline">{option.label}</span>
+                    <span className="hidden lg:inline">{option.label}</span>
                   </button>
                 );
               })}
@@ -509,10 +508,9 @@ export default function App() {
                     type="button"
                     onClick={() => setTaskListMode(mode)}
                     className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all sm:px-2.5 ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                    title={`${label} Mode`}
                   >
                     <Icon size={13} />
-                    <span className="hidden sm:inline">{label}</span>
+                    <span className="hidden lg:inline">{label}</span>
                   </button>
                 );
               })}
@@ -525,22 +523,39 @@ export default function App() {
                 type="button"
                 onClick={toggleGroupDayViewByPart}
                 className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all sm:px-2.5 ${settings.groupDayViewByPart ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-                title="Toggle day blocks"
               >
                 <PanelsTopLeft size={13} />
-                <span className="hidden sm:inline">Blocks</span>
+                <span className="hidden lg:inline">Blocks</span>
               </button>
             </div>
           )}
+
+          <div className="relative w-full sm:hidden">
+            <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex w-full items-center justify-between rounded-xl border soft-divider px-3 py-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]">
+              <span className="font-medium">{selectedArea || 'All Areas'}</span>
+              <ChevronDown size={14} />
+            </button>
+            {showAreaMenu && (
+              <div className="panel-surface absolute left-0 right-0 top-11 z-50 rounded-2xl py-1">
+                <button type="button" onClick={() => { setSelectedArea(null); setShowAreaMenu(false); }} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">All Areas {!selectedArea && <span className="text-[var(--accent)]">•</span>}</button>
+                <div className="my-1 border-t soft-divider" />
+                {AREAS.map((area) => (
+                  <button key={area} type="button" onClick={() => { setSelectedArea(area); setShowAreaMenu(false); }} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">
+                    {area} {selectedArea === area && <span className="text-[var(--accent)]">•</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] sm:block" />
 
           {/* Group 2: Static View Toggles */}
           <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
-            <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Planner (8)">
+            <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
               <CalendarDays size={16} />
             </button>
-            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View (1-7)">
+            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
               <List size={16} />
             </button>
           </div>
@@ -550,20 +565,19 @@ export default function App() {
               type="button"
               onClick={() => setShowCompletedTasks(!settings.showCompletedTasks)}
               className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${settings.showCompletedTasks ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-              title={settings.showCompletedTasks ? "Hide completed tasks" : "Show completed tasks"}
             >
               {settings.showCompletedTasks ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
           </div>
 
-          <button type="button" onClick={() => setShowShortcutsModal(true)} className="flex h-[30px] w-[34px] items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]" title="Shortcuts (K)">
+          <button type="button" onClick={() => setShowShortcutsModal(true)} className="flex h-[30px] w-[34px] items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]">
             <Keyboard size={18} />
           </button>
 
           <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] sm:block" />
 
           {/* Group 3: New Task Input (Right-most) */}
-          <div className="group panel-muted order-last flex w-full items-center rounded-xl border soft-divider p-1 transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_1px_var(--accent-soft)] sm:order-none sm:w-auto">
+          <div className="group panel-muted order-last flex w-full items-center rounded-xl border soft-divider p-1 transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_1px_var(--accent-soft)] lg:order-none lg:w-auto">
             <div className="flex h-[30px] items-center pl-2.5">
               <Plus size={14} className="shrink-0 text-[var(--text-muted)] transition-colors group-focus-within:text-[var(--accent)]" />
             </div>
@@ -571,7 +585,7 @@ export default function App() {
               <input
                 ref={newTaskInputRef}
                 placeholder="New item..."
-                className="flex h-[30px] w-full min-w-0 bg-transparent px-2.5 text-[12.5px] font-medium text-[var(--text-primary)] outline-none transition-all placeholder:font-normal placeholder:text-[var(--text-muted)] sm:w-32 sm:focus:w-48"
+                className="flex h-[30px] w-full min-w-0 bg-transparent px-2.5 text-[12.5px] font-medium text-[var(--text-primary)] outline-none transition-all placeholder:font-normal placeholder:text-[var(--text-muted)] lg:w-32 lg:focus:w-48"
                 value={newTaskTitle}
                 onChange={(event) => setNewTaskTitle(event.target.value)}
               />
@@ -610,7 +624,14 @@ export default function App() {
           </div>
 
           <SidebarItem icon={Star} label="Focus" count={counts.focus} active={currentView === 'focus' || additionalPanels.some(p => p.view === 'focus')} onClick={(e) => handleViewSelect(e, 'focus')} onDrop={(id) => updateTask(id, { isStarred: true })} />
-          <SidebarItem icon={Calendar} label="Today" count={counts.today} active={currentView === 'today' || additionalPanels.some(p => p.view === 'today')} onClick={(e) => handleViewSelect(e, 'today')} onDrop={(id) => updateTask(id, { dueDate: new Date().toISOString().slice(0, 10), status: 'scheduled' })} />
+          <SidebarItem
+            icon={Calendar}
+            label="Today"
+            count={counts.today}
+            active={(currentView === 'day' && selectedPlannerDate === todayDateKey) || additionalPanels.some((p) => p.view === 'day' && p.dateStr === todayDateKey)}
+            onClick={(e) => handleViewSelect(e, 'day', null, todayDateKey)}
+            onDrop={(id) => updateTask(id, { dueDate: todayDateKey, status: 'scheduled' })}
+          />
           <div className="my-4 border-t soft-divider" />
           <SidebarItem icon={Inbox} label="Inbox" count={counts.inbox} active={currentView === 'inbox' || additionalPanels.some(p => p.view === 'inbox')} onClick={(e) => handleViewSelect(e, 'inbox')} onDrop={(id) => updateTask(id, { status: 'inbox' })} />
           <SidebarItem icon={ChevronsRight} label="Next" count={counts.next} active={currentView === 'next' || additionalPanels.some(p => p.view === 'next')} onClick={(e) => handleViewSelect(e, 'next')} onDrop={(id) => updateTask(id, { status: 'next' })} />

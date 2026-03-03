@@ -78,6 +78,7 @@ export interface TimerState {
   linkedTaskId: string | null;
   sessionTitle: string | null;
   lastTick: number | null; // timestamp of last tick when active
+  finished: boolean;
 }
 
 export interface AppStateData {
