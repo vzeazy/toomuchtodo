@@ -44,6 +44,7 @@ const INITIAL_TIMER_STATE: TimerState = {
   duration: 1800, // 30 minutes default
   remaining: 1800,
   linkedTaskId: null,
+  sessionTitle: null,
   lastTick: null,
 };
 
@@ -441,7 +442,7 @@ export const useAppStore = () => {
     }));
   }, []);
 
-  const startTimer = useCallback((duration: number, linkedTaskId: string | null = null) => {
+  const startTimer = useCallback((duration: number, linkedTaskId: string | null = null, sessionTitle: string | null = null) => {
     setSharedState((prev) => ({
       ...prev,
       timer: {
@@ -450,6 +451,7 @@ export const useAppStore = () => {
         duration,
         remaining: duration,
         linkedTaskId,
+        sessionTitle,
         lastTick: Date.now(),
       }
     }));

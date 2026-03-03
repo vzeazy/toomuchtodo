@@ -339,7 +339,7 @@ export const OutlineTaskRow: React.FC<{
 
           <div className="ml-auto flex items-center gap-3">
             <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-              <TaskTimerDot taskId={task.id} />
+              <TaskTimerDot taskId={task.id} taskTitle={task.title} />
               <button
                 type="button"
                 onClick={(event) => {

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { Timer as TimerIcon } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 
 const DEFAULT_BLOCK = 1800; // 30 min
@@ -9,7 +10,7 @@ function snapDuration(secs: number) {
     return Math.max(300, Math.min(MAX_BLOCK, Math.round(secs / SNAP_SECS) * SNAP_SECS));
 }
 
-export function TaskTimerDot({ taskId }: { taskId: string }) {
+export function TaskTimerDot({ taskId, taskTitle }: { taskId: string, taskTitle: string }) {
     const { startTimer, stopTimer, timer } = useAppStore();
     const [isDragging, setIsDragging] = useState(false);
     const [dragDuration, setDragDuration] = useState(DEFAULT_BLOCK);
@@ -73,12 +74,12 @@ export function TaskTimerDot({ taskId }: { taskId: string }) {
         const moved = Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10;
 
         if (moved) {
-            startTimer(dragDuration, taskId);
+            startTimer(dragDuration, taskId, taskTitle);
         } else {
-            startTimer(DEFAULT_BLOCK, taskId);
+            startTimer(DEFAULT_BLOCK, taskId, taskTitle);
         }
         setDragDuration(DEFAULT_BLOCK);
-    }, [isDragging, isCanceling, dragDuration, taskId, startTimer]);
+    }, [isDragging, isCanceling, dragDuration, taskId, taskTitle, startTimer]);
 
     // Hide dot entirely if the timer is active for a different task
     if (isActive && !isActiveForTask) return null;
@@ -102,17 +103,24 @@ export function TaskTimerDot({ taskId }: { taskId: string }) {
                 onPointerCancel={onPointerUp}
                 title={isActiveForTask ? 'Stop timer' : 'Start timer (drag right = custom time)'}
                 style={{
-                    width: isActiveForTask || isDragging ? 10 : 7,
-                    height: isActiveForTask || isDragging ? 10 : 7,
-                    borderRadius: 999,
-                    backgroundColor: dotColor,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: isActiveForTask || isDragging ? 18 : 14,
+                    height: isActiveForTask || isDragging ? 18 : 14,
+                    color: isActiveForTask ? 'var(--app-bg)' : dotColor,
+                    backgroundColor: isActiveForTask ? dotColor : 'transparent',
+                    borderRadius: '50%',
                     cursor: isDragging ? 'grabbing' : 'pointer',
                     flexShrink: 0,
-                    transition: 'width 0.15s, height 0.15s, background-color 0.2s',
+                    transition: 'width 0.15s, height 0.15s, color 0.2s, background-color 0.2s',
                     touchAction: 'none',
                     animation: isActiveForTask ? 'timerPulse 1.8s ease-in-out infinite' : 'none',
+                    opacity: isActiveForTask || isDragging || isCanceling ? 1 : 0.6,
                 }}
-            />
+            >
+                <TimerIcon size={isActiveForTask || isDragging ? 12 : 11} strokeWidth={2.5} />
+            </div>
 
             {/* Drag label */}
             {showLabel && (

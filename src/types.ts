@@ -76,6 +76,7 @@ export interface TimerState {
   duration: number; // in seconds
   remaining: number; // in seconds
   linkedTaskId: string | null;
+  sessionTitle: string | null;
   lastTick: number | null; // timestamp of last tick when active
 }
 

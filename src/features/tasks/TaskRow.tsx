@@ -278,7 +278,7 @@ export const TaskRow: React.FC<{
 
         <div className="ml-auto flex items-center gap-3">
           <div className={`flex items-center gap-1 transition-opacity ${task.isStarred || showMenu ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-            <TaskTimerDot taskId={task.id} />
+            <TaskTimerDot taskId={task.id} taskTitle={task.title} />
             <button
               type="button"
               onClick={(event) => { event.stopPropagation(); onToggleStar(task.id); }}

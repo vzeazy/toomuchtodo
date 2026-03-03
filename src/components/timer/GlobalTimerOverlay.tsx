@@ -13,6 +13,7 @@ export function GlobalTimerOverlay() {
     const { timer, tickTimer, pauseTimer, resumeTimer, stopTimer, activeTheme } = useAppStore();
     const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight });
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const smoothedLitCountRef = useRef(0);
     const [isPictureInPictureOpen, setIsPictureInPictureOpen] = useState(false);
     const pictureInPictureBridgeRef = useRef<TaskPanelPictureInPictureBridgeHandle>(null);
     const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
@@ -72,8 +73,18 @@ export function GlobalTimerOverlay() {
 
         const dotColor = isDanger ? actualDanger : actualAccent;
 
+        if (Math.abs(litCount - smoothedLitCountRef.current) > total * 0.5 && litCount === 0) {
+            smoothedLitCountRef.current = 0; // Snap to 0 on hard reset
+        }
+
         const render = (time: number) => {
             ctx.clearRect(0, 0, dims.w, dims.h);
+
+            // Smoothly interpolate the lit dots count
+            if (!timer.paused) {
+                smoothedLitCountRef.current += (litCount - smoothedLitCountRef.current) * 0.05;
+            }
+            const drawCount = Math.floor(smoothedLitCountRef.current);
 
             ctx.fillStyle = dotColor;
 
@@ -84,7 +95,7 @@ export function GlobalTimerOverlay() {
             ctx.beginPath();
 
             // Draw squares for maximum performance. At 3px they look soft enough.
-            for (let i = 0; i < litCount; i++) {
+            for (let i = 0; i < drawCount; i++) {
                 const col = i % cols;
                 const row = Math.floor(i / cols);
                 const x = col * DOT_GAP + (DOT_GAP - DOT_D) / 2;
@@ -161,7 +172,7 @@ export function GlobalTimerOverlay() {
                 letterSpacing: '0.3em',
                 marginTop: -8 * sizeScale,
             }}>
-                {timer.paused ? 'Timer Paused' : 'Deep Focus'}
+                {timer.paused ? 'Timer Paused' : (timer.sessionTitle || 'Deep Focus')}
             </div>
         </motion.div>
     );

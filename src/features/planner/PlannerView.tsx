@@ -58,6 +58,7 @@ export const PlannerView: React.FC<{
   const visibleProjects = hideEmptyProjects
     ? orderedProjects.filter(({ project }) => (projectParentTaskCounts.get(project.id) || 0) > 0)
     : orderedProjects;
+  const dayColumnMinWidth = weekDays.length <= 5 ? 220 : 190;
 
   return (
     <div className={`space-y-12 ${widthMode === 'container' ? 'mx-auto max-w-7xl' : widthMode === 'wide' ? 'mx-auto max-w-[92rem]' : 'w-full max-w-none'}`}>
@@ -93,7 +94,10 @@ export const PlannerView: React.FC<{
         </div>
       </div>
 
-      <div className={`grid gap-4 ${weekDays.length === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-7'}`}>
+      <div
+        className="grid gap-4"
+        style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${dayColumnMinWidth}px, 1fr))` }}
+      >
         {weekDays.map((day) => {
           const dayTasks = parentTasks.filter((task) => task.dueDate === day.dateStr);
           const isEmpty = dayTasks.length === 0;

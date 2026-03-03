@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Timer as TimerIcon } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 
 // ─── Scale constants ───────────────────────────────────────────────────────────
@@ -320,8 +321,8 @@ export function GlobalTimerTrigger() {
                     {/* Circle head */}
                     <motion.div
                         animate={{
-                            width: isDragging ? 20 : 10,
-                            height: isDragging ? 20 : 10,
+                            width: isDragging ? 32 : 24,
+                            height: isDragging ? 32 : 24,
                             right: isDragging ? 32 : 16, // Pins circle exactly at left edge of the tail
                             boxShadow: isDragging
                                 ? `0 0 14px ${isCanceling ? 'var(--danger)' : accentColor}, 0 0 34px ${isCanceling ? 'var(--danger)' : accentColor}55`
@@ -335,8 +336,14 @@ export function GlobalTimerTrigger() {
                             borderRadius: '50%',
                             background: isCanceling ? 'var(--danger)' : accentColor,
                             transition: 'background 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--app-bg)' // Use app background for high contrast against accent
                         }}
-                    />
+                    >
+                        <TimerIcon size={isDragging ? 16 : 12} strokeWidth={3} />
+                    </motion.div>
                 </div>
             </div>
 
