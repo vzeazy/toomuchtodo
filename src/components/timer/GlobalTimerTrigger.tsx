@@ -219,12 +219,11 @@ export function GlobalTimerTrigger() {
                         // Style variants
                         const isMajor = tick.style === 'major';
                         const isMinor = tick.style === 'minor';
-                        const isMicro = tick.style === 'micro';
 
-                        const dashW = isMajor ? 14 : isMinor ? 9 : 4;
-                        const dotH = isMajor ? 1.5 : isMinor ? 1.5 : 1;
-                        const labelOpacity = isMajor ? 1 : isMinor ? 0.7 : 0;
-                        const labelSize = isMajor ? 9 : 8;
+                        const dashW = isMajor ? 18 : isMinor ? 12 : 6;
+                        const dotH = isMajor ? 2.5 : isMinor ? 2 : 1.5;
+                        const labelOpacity = isMajor ? 1 : isMinor ? 0.75 : 0;
+                        const labelSize = isMajor ? 11 : 9;
                         const activeColor = isCanceling ? 'var(--danger)' : accentColor;
 
                         return (
@@ -236,28 +235,44 @@ export function GlobalTimerTrigger() {
                                 transition={{ delay: 0.03, duration: 0.12 }}
                                 style={{
                                     position: 'absolute',
-                                    right: 0,
+                                    right: 4, // Pad from edge
                                     top: tickTop,
-                                    transform: 'translateY(-50%)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
                                     pointerEvents: 'none',
                                 }}
                             >
+                                {/* Tick mark / dot */}
+                                <div style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    top: 0,
+                                    transform: 'translateY(-50%)',
+                                    width: isActive ? dashW : Math.max(3, dashW * 0.5),
+                                    height: dotH,
+                                    borderRadius: 99,
+                                    background: isActive
+                                        ? (isCanceling ? 'rgba(255,100,100,0.7)' : activeColor)
+                                        : 'rgba(255,255,255,0.18)',
+                                    transition: 'width 0.15s, height 0.15s, background 0.15s',
+                                    boxShadow: (isActive && isMajor) ? `0 0 8px ${activeColor}` : 'none',
+                                }} />
+
                                 {/* Label */}
                                 {tick.label && (
                                     <span style={{
+                                        position: 'absolute',
+                                        right: dashW + 8, // Anchor right side next to the tick
+                                        top: 0,
+                                        transform: 'translateY(-50%)',
                                         fontSize: labelSize,
-                                        fontWeight: isMajor ? 800 : 600,
+                                        fontWeight: isMajor ? 800 : 700,
                                         fontFamily: '"IBM Plex Mono", monospace',
                                         textTransform: 'uppercase',
                                         letterSpacing: '0.07em',
                                         whiteSpace: 'nowrap',
                                         transition: 'color 0.15s, text-shadow 0.15s',
                                         color: isActive
-                                            ? (isCanceling ? 'rgba(255,100,100,0.9)' : 'rgba(255,255,255,0.85)')
-                                            : 'rgba(255,255,255,0.18)',
+                                            ? (isCanceling ? 'rgba(255,100,100,0.9)' : 'rgba(255,255,255,0.95)')
+                                            : 'rgba(255,255,255,0.35)',
                                         textShadow: (isActive && isMajor)
                                             ? `0 0 10px ${activeColor}`
                                             : 'none',
@@ -266,69 +281,58 @@ export function GlobalTimerTrigger() {
                                         {tick.label}
                                     </span>
                                 )}
-
-                                {/* Tick mark / dot */}
-                                <div style={{
-                                    width: isActive ? dashW : Math.max(2, dashW * 0.5),
-                                    height: dotH,
-                                    borderRadius: 99,
-                                    background: isActive
-                                        ? (isCanceling ? 'rgba(255,100,100,0.7)' : activeColor)
-                                        : 'rgba(255,255,255,0.08)',
-                                    transition: 'width 0.12s, background 0.15s',
-                                    boxShadow: (isActive && isMajor) ? `0 0 6px ${activeColor}` : 'none',
-                                }} />
                             </motion.div>
                         );
                     })}
                 </AnimatePresence>
 
                 {/* ── Grabber ────────────────────────────────────────────── */}
-                {/* Outer div owns positioning — no framer-motion so translateY(-50%) is never overridden.
-                     During drag: instant (top is set directly from pointer).
-                     On release / not dragging: CSS spring transition snaps into place. */}
+                {/* Outer div owns vertical positioning (top directly tracked, no flexbox tricks). */}
                 <div
                     style={{
                         position: 'absolute',
-                        right: 8,
+                        right: 4, // Match ticks right padding
                         top: isDragging ? grabberTop : TRACK_H / 2,
-                        transform: 'translateY(-50%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
                         pointerEvents: 'none',
                         transition: isDragging
                             ? 'none'
                             : 'top 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
                     }}
                 >
-                    {/* Circle — framer handles size & glow only */}
+                    {/* Tail */}
                     <motion.div
                         animate={{
-                            width: isDragging ? 13 : 7,
-                            height: isDragging ? 13 : 7,
+                            width: isDragging ? 32 : 16,
+                            opacity: isDragging ? 0.9 : 0.4,
+                        }}
+                        transition={{ duration: 0.15 }}
+                        style={{
+                            position: 'absolute',
+                            right: 0,
+                            top: 0,
+                            transform: 'translateY(-50%)',
+                            height: 2.5,
+                            borderRadius: 99,
+                            background: isCanceling ? 'var(--danger)' : accentColor,
+                            transition: 'background 0.2s',
+                        }}
+                    />
+                    {/* Circle head */}
+                    <motion.div
+                        animate={{
+                            width: isDragging ? 20 : 10,
+                            height: isDragging ? 20 : 10,
+                            right: isDragging ? 32 : 16, // Pins circle exactly at left edge of the tail
                             boxShadow: isDragging
-                                ? `0 0 12px ${isCanceling ? 'var(--danger)' : accentColor}, 0 0 30px ${isCanceling ? 'var(--danger)' : accentColor}55`
+                                ? `0 0 14px ${isCanceling ? 'var(--danger)' : accentColor}, 0 0 34px ${isCanceling ? 'var(--danger)' : accentColor}55`
                                 : '0 1px 6px rgba(0,0,0,0.4)',
                         }}
                         transition={{ duration: 0.15 }}
                         style={{
+                            position: 'absolute',
+                            top: 0,
+                            transform: 'translateY(-50%)',
                             borderRadius: '50%',
-                            background: isCanceling ? 'var(--danger)' : accentColor,
-                            flexShrink: 0,
-                            transition: 'background 0.2s',
-                        }}
-                    />
-                    {/* Tail */}
-                    <motion.div
-                        animate={{
-                            width: isDragging ? 22 : 11,
-                            opacity: isDragging ? 0.75 : 0.35,
-                        }}
-                        transition={{ duration: 0.15 }}
-                        style={{
-                            height: 1.5,
-                            borderRadius: 99,
                             background: isCanceling ? 'var(--danger)' : accentColor,
                             transition: 'background 0.2s',
                         }}
