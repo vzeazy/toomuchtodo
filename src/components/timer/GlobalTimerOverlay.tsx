@@ -1,14 +1,23 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PictureInPicture2, Pause, Play, Square } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
+import { TaskPanelPictureInPictureBridge, TaskPanelPictureInPictureBridgeHandle } from '../../features/tasks/TaskPanelPictureInPictureBridge';
+import { getThemeVariables } from '../../lib/theme';
 
 // Dots grid size in px (diameter + gap)
 const DOT_D = 3;
-const DOT_GAP = 10; // slightly wider for better aesthetic
+const DOT_GAP = 12; // slightly wider for better aesthetic and performance
 
 export function GlobalTimerOverlay() {
-    const { timer, tickTimer, pauseTimer, resumeTimer, stopTimer } = useAppStore();
+    const { timer, tickTimer, pauseTimer, resumeTimer, stopTimer, activeTheme } = useAppStore();
     const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight });
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [isPictureInPictureOpen, setIsPictureInPictureOpen] = useState(false);
+    const pictureInPictureBridgeRef = useRef<TaskPanelPictureInPictureBridgeHandle>(null);
+    const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
+
+    const themeVariables = useMemo(() => getThemeVariables(activeTheme), [activeTheme]);
 
     // Timer tick
     useEffect(() => {
@@ -23,8 +32,6 @@ export function GlobalTimerOverlay() {
         window.addEventListener('resize', onResize);
         return () => window.removeEventListener('resize', onResize);
     }, []);
-
-    if (!timer.active) return null;
 
     const cols = Math.ceil(dims.w / DOT_GAP);
     const rows = Math.ceil(dims.h / DOT_GAP);
@@ -50,134 +57,225 @@ export function GlobalTimerOverlay() {
 
     const accentColor = isDanger ? 'var(--danger)' : 'var(--accent)';
 
+    // Canvas effect for dots
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !timer.active || isPictureInPictureOpen) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let animationFrameId: number;
+
+        const style = getComputedStyle(document.documentElement);
+        const actualAccent = style.getPropertyValue('--accent').trim() || '#5ea1ff';
+        const actualDanger = style.getPropertyValue('--danger').trim() || '#ff4757';
+
+        const dotColor = isDanger ? actualDanger : actualAccent;
+
+        const render = (time: number) => {
+            ctx.clearRect(0, 0, dims.w, dims.h);
+
+            ctx.fillStyle = dotColor;
+
+            // Global pulse effect for glowing without expensive shadowBlur
+            const pulse = 0.85 + 0.15 * Math.sin(time / 400); // 0.7 to 1.0 opacity
+            ctx.globalAlpha = timer.paused ? 0.3 : pulse;
+
+            ctx.beginPath();
+
+            // Draw squares for maximum performance. At 3px they look soft enough.
+            for (let i = 0; i < litCount; i++) {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const x = col * DOT_GAP + (DOT_GAP - DOT_D) / 2;
+                const y = row * DOT_GAP + (DOT_GAP - DOT_D) / 2;
+
+                // Add a very subtle wave effect based on coordinates
+                const wave = Math.sin((x + y) / 120 - time / 600);
+                const sizeOffset = timer.paused ? 0 : wave * 0.6; // slightly grow and shrink
+
+                ctx.rect(x - sizeOffset, y - sizeOffset, DOT_D + sizeOffset * 2, DOT_D + sizeOffset * 2);
+            }
+            ctx.fill();
+
+            if (!timer.paused) {
+                animationFrameId = requestAnimationFrame(render);
+            }
+        };
+
+        if (timer.paused) {
+            // Render a static frame if paused
+            render(0);
+        } else {
+            animationFrameId = requestAnimationFrame(render);
+        }
+
+        return () => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+        };
+    }, [dims, litCount, isDanger, timer.active, timer.paused, cols, isPictureInPictureOpen]);
+
+    const handleTogglePictureInPicture = async () => {
+        if (!isPictureInPictureSupported) return;
+        if (isPictureInPictureOpen) {
+            pictureInPictureBridgeRef.current?.close();
+            return;
+        }
+        await pictureInPictureBridgeRef.current?.open();
+    };
+
+    // Sub-renderers to share logic between main view and PIP
+    const ClockView = ({ sizeScale = 1 }: { sizeScale?: number }) => (
+        <motion.div
+            animate={{
+                scale: timer.paused ? 0.95 * sizeScale : 1 * sizeScale,
+                opacity: timer.paused ? 0.4 : 1,
+            }}
+            transition={{ duration: 0.5, ease: 'easeInOut' }}
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12 * sizeScale,
+            }}
+        >
+            <span style={{
+                fontFamily: '"IBM Plex Mono", "JetBrains Mono", monospace',
+                fontSize: 140 * sizeScale,
+                fontWeight: 800,
+                color: 'white',
+                lineHeight: 1,
+                letterSpacing: '-0.06em',
+                textShadow: `0 0 ${60 * sizeScale}px ${accentColor}, 0 0 ${100 * sizeScale}px ${accentColor}`,
+            }}>
+                {timeStr}
+            </span>
+
+            <div style={{
+                fontSize: 15 * sizeScale,
+                fontWeight: 700,
+                color: 'rgba(255,255,255,0.6)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.3em',
+                marginTop: -8 * sizeScale,
+            }}>
+                {timer.paused ? 'Timer Paused' : 'Deep Focus'}
+            </div>
+        </motion.div>
+    );
+
+    // IMPORTANT: Early return *after* all hooks!
+    if (!timer.active) return null;
+
     return (
-        <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                style={{
-                    position: 'fixed',
-                    inset: 0,
-                    zIndex: 8000,
-                    overflow: 'hidden',
-                }}
+        <>
+            <TaskPanelPictureInPictureBridge
+                ref={pictureInPictureBridgeRef}
+                title="Timer • Too Much Todo"
+                themeVariables={themeVariables}
+                onOpenChange={setIsPictureInPictureOpen}
             >
-                {/* 1. Backdrop Blur & Faded Layer */}
                 <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'rgba(0, 0, 0, 0.25)',
-                    backdropFilter: 'blur(16px)',
-                    zIndex: 1,
-                }} />
-
-                {/* 2. Timer Matrix (Dot Grid) */}
-                <svg
-                    width={dims.w}
-                    height={dims.h}
-                    style={{
-                        position: 'absolute',
-                        inset: 0,
-                        zIndex: 2,
-                        opacity: timer.paused ? 0.2 : 0.5,
-                        transition: 'opacity 0.5s ease',
-                    }}
-                >
-                    <defs>
-                        <radialGradient id="lit-glow" cx="50%" cy="50%" r="50%">
-                            <stop offset="0%" stopColor={accentColor} stopOpacity="1" />
-                            <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
-                        </radialGradient>
-                    </defs>
-                    {/* Render dots in groups or use a pattern for performance.
-                        For a truly high-end feel with individual dot lighting, 
-                        we iterate up to litCount.
-                    */}
-                    {Array.from({ length: Math.min(litCount, 5000) }).map((_, i) => {
-                        const col = i % cols;
-                        const row = Math.floor(i / cols);
-                        const cx = col * DOT_GAP + DOT_GAP / 2;
-                        const cy = row * DOT_GAP + DOT_GAP / 2;
-                        return (
-                            <circle
-                                key={i}
-                                cx={cx}
-                                cy={cy}
-                                r={DOT_D / 2}
-                                fill={accentColor}
-                                style={{ opacity: 1 }}
-                            />
-                        );
-                    })}
-                </svg>
-
-                {/* 3. Central Timer Clock / HUD (Most prominent) */}
-                <div style={{
-                    position: 'absolute',
-                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    background: 'var(--app-bg)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    zIndex: 10,
-                    pointerEvents: 'none',
+                    padding: 24,
+                    overflow: 'hidden',
                 }}>
+                    <ClockView sizeScale={0.5} />
+                    <div style={{ marginTop: 40 }}>
+                        <TimerHUD
+                            isDanger={isDanger}
+                            paused={timer.paused}
+                            onPauseResume={timer.paused ? resumeTimer : pauseTimer}
+                            onStop={stopTimer}
+                            onTogglePIP={handleTogglePictureInPicture}
+                            isPIP={true}
+                            pipSupported={isPictureInPictureSupported}
+                        />
+                    </div>
+                </div>
+            </TaskPanelPictureInPictureBridge>
+
+            <AnimatePresence>
+                {!isPictureInPictureOpen && (
                     <motion.div
-                        animate={{
-                            scale: timer.paused ? 0.95 : 1,
-                            opacity: timer.paused ? 0.6 : 1,
-                        }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
                         style={{
+                            position: 'fixed',
+                            inset: 0,
+                            zIndex: 8000,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        {/* 1. Backdrop Blur & Faded Layer */}
+                        <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(0, 0, 0, 0.45)',
+                            backdropFilter: 'blur(24px)',
+                            zIndex: 1,
+                        }} />
+
+                        {/* 2. Timer Matrix (Canvas) */}
+                        <canvas
+                            ref={canvasRef}
+                            width={dims.w}
+                            height={dims.h}
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                zIndex: 2,
+                                transition: 'opacity 0.5s ease',
+                            }}
+                        />
+
+                        {/* 3. Central Timer Clock / HUD (Most prominent) */}
+                        <div style={{
+                            position: 'absolute',
+                            inset: 0,
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            gap: 12,
-                        }}
-                    >
-                        <span style={{
-                            fontFamily: '"IBM Plex Mono", "JetBrains Mono", monospace',
-                            fontSize: 120,
-                            fontWeight: 700,
-                            color: 'white',
-                            lineHeight: 1,
-                            letterSpacing: '-0.05em',
-                            textShadow: `0 0 40px ${accentColor}`,
+                            justifyContent: 'center',
+                            zIndex: 10,
+                            pointerEvents: 'none',
                         }}>
-                            {timeStr}
-                        </span>
+                            <ClockView />
+                        </div>
 
-                        <div style={{
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: 'rgba(255,255,255,0.4)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.2em',
-                        }}>
-                            {timer.paused ? 'Paused' : 'Keep Focused'}
+                        {/* 4. Controls HUD (Floating corner) */}
+                        <div
+                            style={{
+                                position: 'absolute',
+                                bottom: 48,
+                                right: 48,
+                                zIndex: 20,
+                                pointerEvents: 'auto'
+                            }}
+                        >
+                            <TimerHUD
+                                isDanger={isDanger}
+                                paused={timer.paused}
+                                onPauseResume={timer.paused ? resumeTimer : pauseTimer}
+                                onStop={stopTimer}
+                                onTogglePIP={handleTogglePictureInPicture}
+                                isPIP={false}
+                                pipSupported={isPictureInPictureSupported}
+                            />
                         </div>
                     </motion.div>
-                </div>
-
-                {/* 4. Controls HUD (Floating corner) */}
-                <div
-                    style={{
-                        position: 'absolute',
-                        bottom: 48,
-                        right: 48,
-                        zIndex: 20,
-                        pointerEvents: 'auto'
-                    }}
-                >
-                    <TimerHUD
-                        isDanger={isDanger}
-                        paused={timer.paused}
-                        onPauseResume={timer.paused ? resumeTimer : pauseTimer}
-                        onStop={stopTimer}
-                    />
-                </div>
-            </motion.div>
-        </AnimatePresence>
+                )}
+            </AnimatePresence>
+        </>
     );
 }
 
@@ -186,62 +284,113 @@ function TimerHUD({
     paused,
     onPauseResume,
     onStop,
+    onTogglePIP,
+    isPIP,
+    pipSupported,
 }: {
     isDanger: boolean;
     paused: boolean;
     onPauseResume: () => void;
     onStop: () => void;
+    onTogglePIP: () => void;
+    isPIP: boolean;
+    pipSupported: boolean;
 }) {
-    const accentColor = isDanger ? 'var(--danger)' : 'var(--accent)';
-
     return (
         <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 16,
-            background: 'rgba(255,255,255,0.1)',
-            backdropFilter: 'blur(30px)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            gap: 12,
+            background: 'rgba(20, 20, 20, 0.65)',
+            backdropFilter: 'blur(40px)',
+            border: `1px solid rgba(255,255,255,0.12)`,
             borderRadius: 24,
-            padding: '12px 24px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+            padding: '8px 12px',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.3)',
         }}>
-            <button
+            {/* Pause/Resume Button */}
+            <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={onPauseResume}
                 style={{
-                    background: paused ? 'white' : 'rgba(255,255,255,0.1)',
+                    background: paused ? 'white' : 'rgba(255,255,255,0.08)',
                     border: 'none',
                     color: paused ? 'black' : 'white',
-                    padding: '10px 24px',
-                    borderRadius: 16,
-                    fontSize: 13,
-                    fontWeight: 700,
+                    height: 44,
+                    borderRadius: 18,
+                    padding: '0 20px',
+                    fontSize: 12,
+                    fontWeight: 800,
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'background 0.2s, color 0.2s',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
+                    letterSpacing: '0.08em',
                 }}
             >
+                {paused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
                 {paused ? 'Resume' : 'Pause'}
-            </button>
-            <button
+            </motion.button>
+
+            {/* PiP Button — always rendered, disabled on non-HTTPS */}
+            <motion.button
+                whileHover={pipSupported ? { scale: 1.1, backgroundColor: 'rgba(255,255,255,0.15)' } : {}}
+                whileTap={pipSupported ? { scale: 0.9 } : {}}
+                onClick={pipSupported ? onTogglePIP : undefined}
+                disabled={!pipSupported}
+                style={{
+                    background: 'rgba(255,255,255,0.08)',
+                    border: 'none',
+                    color: pipSupported ? 'white' : 'rgba(255,255,255,0.3)',
+                    width: 44,
+                    height: 44,
+                    borderRadius: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: pipSupported ? 'pointer' : 'not-allowed',
+                    transition: 'background 0.2s',
+                    opacity: pipSupported ? 1 : 0.4,
+                }}
+                title={pipSupported
+                    ? (isPIP ? "Return to Fullscreen" : "Pop Out · Always on Top")
+                    : "Picture-in-Picture requires HTTPS"}
+            >
+                <PictureInPicture2 size={18} strokeWidth={2.2} />
+            </motion.button>
+
+            {/* Separator */}
+            <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.1)' }} />
+
+            {/* Stop Button */}
+            <motion.button
+                whileHover={{ scale: 1.05, background: 'rgba(215, 60, 60, 0.3)', borderColor: 'rgba(255, 107, 107, 0.5)' }}
+                whileTap={{ scale: 0.95 }}
                 onClick={onStop}
                 style={{
-                    background: 'rgba(215, 60, 60, 0.2)',
-                    border: '1px solid rgba(215, 60, 60, 0.3)',
-                    color: '#ff6b6b',
-                    padding: '10px 24px',
-                    borderRadius: 16,
-                    fontSize: 13,
-                    fontWeight: 700,
+                    background: 'rgba(215, 60, 60, 0.15)',
+                    border: '1px solid rgba(215, 60, 60, 0.2)',
+                    color: '#ff8a8a',
+                    height: 44,
+                    borderRadius: 18,
+                    padding: '0 20px',
+                    fontSize: 12,
+                    fontWeight: 800,
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                     transition: 'all 0.2s',
                     textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
+                    letterSpacing: '0.08em',
                 }}
             >
+                <Square size={14} fill="currentColor" />
                 Stop
-            </button>
+            </motion.button>
         </div>
     );
 }

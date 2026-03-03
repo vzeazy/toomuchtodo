@@ -129,12 +129,31 @@ export const createExportPayload = (state: AppStateData): AppDataExport => ({
   data: state,
 });
 
+let memoryState: AppStateData | null = null;
+const listeners = new Set<() => void>();
+
+function getSharedState() {
+  if (!memoryState) memoryState = getInitialState();
+  return memoryState;
+}
+
+function setSharedState(next: AppStateData | ((prev: AppStateData) => AppStateData)) {
+  const prev = getSharedState();
+  memoryState = typeof next === 'function' ? next(prev) : next;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryState));
+  listeners.forEach((l) => l());
+}
+
 export const useAppStore = () => {
-  const [state, setState] = useState<AppStateData>(getInitialState);
+  const [state, setLocalState] = useState<AppStateData>(getSharedState);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    const listener = () => setLocalState(getSharedState());
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
 
   const addTask = useCallback((
     title: string,
@@ -162,7 +181,7 @@ export const useAppStore = () => {
       tags: [],
     };
 
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       tasks: atStart ? [newTask, ...prev.tasks] : [...prev.tasks, newTask],
     }));
@@ -171,14 +190,14 @@ export const useAppStore = () => {
   }, []);
 
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       tasks: prev.tasks.map((task) => task.id === id ? normalizeTask({ ...task, ...updates, id: task.id }) : task),
     }));
   }, []);
 
   const reorderTasks = useCallback((sourceId: string, targetId: string) => {
-    setState((prev) => {
+    setSharedState((prev) => {
       const oldIndex = prev.tasks.findIndex((task) => task.id === sourceId);
       const newIndex = prev.tasks.findIndex((task) => task.id === targetId);
       if (oldIndex === -1 || newIndex === -1) return prev;
@@ -192,7 +211,7 @@ export const useAppStore = () => {
   }, []);
 
   const deleteTask = useCallback((id: string) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       tasks: prev.tasks
         .filter((task) => task.id !== id)
@@ -201,14 +220,14 @@ export const useAppStore = () => {
   }, []);
 
   const toggleStar = useCallback((id: string) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       tasks: prev.tasks.map((task) => task.id === id ? { ...task, isStarred: !task.isStarred } : task),
     }));
   }, []);
 
   const toggleComplete = useCallback((id: string) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       tasks: prev.tasks.map((task) => {
         if (task.id !== id) return task;
@@ -225,19 +244,19 @@ export const useAppStore = () => {
 
   const addProject = useCallback((name: string, parentId: string | null = null, color?: string) => {
     const project: Project = { id: uid('proj'), name, color, parentId };
-    setState((prev) => ({ ...prev, projects: [...prev.projects, project] }));
+    setSharedState((prev) => ({ ...prev, projects: [...prev.projects, project] }));
     return project.id;
   }, []);
 
   const updateProject = useCallback((id: string, updates: Partial<Project>) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       projects: prev.projects.map((project) => project.id === id ? normalizeProject({ ...project, ...updates, id: project.id }) : project),
     }));
   }, []);
 
   const deleteProject = useCallback((id: string, deleteTasks = false) => {
-    setState((prev) => {
+    setSharedState((prev) => {
       const removedTaskIds = new Set(
         deleteTasks
           ? prev.tasks.filter((task) => task.projectId === id).map((task) => task.id)
@@ -259,11 +278,11 @@ export const useAppStore = () => {
   }, []);
 
   const setActiveTheme = useCallback((themeId: string) => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, activeThemeId: themeId } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, activeThemeId: themeId } }));
   }, []);
 
   const saveTheme = useCallback((theme: ThemeDefinition) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       themes: dedupeThemes([...prev.themes.filter((item) => item.id !== theme.id), theme, ...builtInThemes]),
       settings: { ...prev.settings, activeThemeId: theme.id },
@@ -272,7 +291,7 @@ export const useAppStore = () => {
 
   const importAppData = useCallback((payload: AppDataExport) => {
     const imported = payload.data;
-    setState({
+    setSharedState({
       version: CURRENT_VERSION,
       tasks: Array.isArray(imported.tasks) ? imported.tasks.map(normalizeTask) : [],
       projects: Array.isArray(imported.projects) ? imported.projects.map(normalizeProject) : [],
@@ -284,6 +303,7 @@ export const useAppStore = () => {
         hideEmptyProjectsInPlanner: imported.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
         compactEmptyDaysInPlanner: imported.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
         startPlannerOnToday: imported.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
+        groupDayViewByPart: imported.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
       },
       themes: dedupeThemes([...(Array.isArray(imported.themes) ? imported.themes : []), ...builtInThemes]),
       timer: imported.timer || INITIAL_TIMER_STATE,
@@ -291,7 +311,7 @@ export const useAppStore = () => {
   }, []);
 
   const importTaskListData = useCallback((payload: TaskListExchange, mode: TaskListImportMode) => {
-    setState((prev) => {
+    setSharedState((prev) => {
       const scope = payload.scope;
       const isInScope = (task: Task) => scope.type === 'inbox' ? task.status === 'inbox' : task.projectId === scope.projectId;
       const existingScopeIds = new Set(prev.tasks.filter(isInScope).map((task) => task.id));
@@ -367,62 +387,62 @@ export const useAppStore = () => {
   }, []);
 
   const setPlannerWidthMode = useCallback((plannerWidthMode: PlannerWidthMode) => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, plannerWidthMode } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, plannerWidthMode } }));
   }, []);
 
   const setTaskListMode = useCallback((taskListMode: TaskListMode) => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, taskListMode } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, taskListMode } }));
   }, []);
 
   const setShowCompletedTasks = useCallback((showCompletedTasks: boolean) => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, showCompletedTasks } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, showCompletedTasks } }));
   }, []);
 
   const toggleHideEmptyProjectsInPlanner = useCallback(() => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, hideEmptyProjectsInPlanner: !prev.settings.hideEmptyProjectsInPlanner } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, hideEmptyProjectsInPlanner: !prev.settings.hideEmptyProjectsInPlanner } }));
   }, []);
 
   const toggleCompactEmptyDaysInPlanner = useCallback(() => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, compactEmptyDaysInPlanner: !prev.settings.compactEmptyDaysInPlanner } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, compactEmptyDaysInPlanner: !prev.settings.compactEmptyDaysInPlanner } }));
   }, []);
 
   const toggleStartPlannerOnToday = useCallback(() => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, startPlannerOnToday: !prev.settings.startPlannerOnToday } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, startPlannerOnToday: !prev.settings.startPlannerOnToday } }));
   }, []);
 
   const toggleGroupDayViewByPart = useCallback(() => {
-    setState((prev) => ({ ...prev, settings: { ...prev.settings, groupDayViewByPart: !prev.settings.groupDayViewByPart } }));
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, groupDayViewByPart: !prev.settings.groupDayViewByPart } }));
   }, []);
 
   const setTaskParent = useCallback((taskId: string, parentId: string | null) => {
-    setState((prev) => ({ ...prev, tasks: updateTaskParent(prev.tasks, taskId, parentId) }));
+    setSharedState((prev) => ({ ...prev, tasks: updateTaskParent(prev.tasks, taskId, parentId) }));
   }, []);
 
   const moveTaskBefore = useCallback((sourceId: string, targetId: string, parentId: string | null) => {
-    setState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'before', parentId) }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'before', parentId) }));
   }, []);
 
   const moveTaskAfter = useCallback((sourceId: string, targetId: string, parentId: string | null) => {
-    setState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'after', parentId) }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'after', parentId) }));
   }, []);
 
   const moveTaskBeforeFlat = useCallback((sourceId: string, targetId: string) => {
-    setState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'before') }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'before') }));
   }, []);
 
   const moveTaskAfterFlat = useCallback((sourceId: string, targetId: string) => {
-    setState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'after') }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'after') }));
   }, []);
 
   const toggleTaskCollapsed = useCallback((taskId: string) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       tasks: prev.tasks.map((task) => task.id === taskId ? { ...task, collapsed: !task.collapsed } : task),
     }));
   }, []);
 
   const startTimer = useCallback((duration: number, linkedTaskId: string | null = null) => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       timer: {
         active: true,
@@ -436,28 +456,28 @@ export const useAppStore = () => {
   }, []);
 
   const pauseTimer = useCallback(() => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       timer: { ...prev.timer, paused: true, lastTick: null }
     }));
   }, []);
 
   const resumeTimer = useCallback(() => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       timer: { ...prev.timer, paused: false, lastTick: Date.now() }
     }));
   }, []);
 
   const stopTimer = useCallback(() => {
-    setState((prev) => ({
+    setSharedState((prev) => ({
       ...prev,
       timer: INITIAL_TIMER_STATE
     }));
   }, []);
 
   const tickTimer = useCallback(() => {
-    setState((prev) => {
+    setSharedState((prev) => {
       if (!prev.timer.active || prev.timer.paused || !prev.timer.lastTick) return prev;
       const now = Date.now();
       const deltaSeconds = Math.round((now - prev.timer.lastTick) / 1000);
