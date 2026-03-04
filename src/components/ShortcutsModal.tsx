@@ -19,6 +19,9 @@ export const ShortcutsModal: React.FC<{ onClose: () => void }> = ({ onClose }) =
         <div className="flex justify-between"><span>Toggle sidebar</span> <kbd className="rounded bg-[var(--panel-bg)] px-2 py-0.5 text-[var(--text-primary)]">Ctrl/Cmd + B</kbd></div>
         <div className="flex justify-between"><span>Views</span> <kbd className="rounded bg-[var(--panel-bg)] px-2 py-0.5 text-[var(--text-primary)]">1-7</kbd></div>
         <div className="flex justify-between"><span>Cycle areas</span> <kbd className="rounded bg-[var(--panel-bg)] px-2 py-0.5 text-[var(--text-primary)]">Shift + [ ]</kbd></div>
+        <div className="flex justify-between"><span>Timer pause/resume</span> <kbd className="rounded bg-[var(--panel-bg)] px-2 py-0.5 text-[var(--text-primary)]">Space</kbd></div>
+        <div className="flex justify-between"><span>Timer stop</span> <kbd className="rounded bg-[var(--panel-bg)] px-2 py-0.5 text-[var(--text-primary)]">Esc</kbd></div>
+        <div className="flex justify-between"><span>Timer pop-out toggle</span> <kbd className="rounded bg-[var(--panel-bg)] px-2 py-0.5 text-[var(--text-primary)]">P</kbd></div>
       </div>
     </div>
   </div>

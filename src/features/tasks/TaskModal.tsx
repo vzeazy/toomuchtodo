@@ -38,23 +38,30 @@ export const TaskModal: React.FC<{
 }> = ({ task, tasks, projects, onClose, onUpdate, onSetParent, onDelete, onToggleStar, onToggleComplete, onMoveTaskBefore, onMoveTaskAfter, onAddSubtask, onOpenTask }) => {
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [draftSubtaskTitle, setDraftSubtaskTitle] = useState('');
-  const [isEditingNotes, setIsEditingNotes] = useState(!task.description.trim());
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [isNotesExpanded, setIsNotesExpanded] = useState(false);
+  const [isMetaExpanded, setIsMetaExpanded] = useState(false);
   const [dragTarget, setDragTarget] = useState<string | null>(null);
   const [isDraggingSubtask, setIsDraggingSubtask] = useState(false);
 
   const tagValue = useMemo(() => task.tags.join(', '), [task.tags]);
   const subtasks = useMemo(() => tasks.filter((t) => t.parentId === task.id), [tasks, task.id]);
+  const hasNotes = task.description.trim().length > 0;
   const noteLineCount = useMemo(() => task.description.split('\n').length, [task.description]);
   const shouldCollapseNotes = task.description.length > 460 || noteLineCount > 10;
+  const statusLabel = useMemo(() => TASK_STATUSES.find((status) => status.value === task.status)?.label || 'Open', [task.status]);
+  const dayBlockLabel = useMemo(() => DAY_PARTS.find((part) => part.value === task.dayPart)?.label || 'No Block', [task.dayPart]);
+  const projectLabel = useMemo(() => projects.find((project) => project.id === task.projectId)?.name || 'No Project', [projects, task.projectId]);
+  const parentLabel = useMemo(() => tasks.find((candidate) => candidate.id === task.parentId)?.title || 'Top level', [task.parentId, tasks]);
   const availableParents = useMemo(
     () => tasks.filter((candidate) => candidate.id !== task.id && canReparentTask(task.id, candidate.id, tasks)),
     [task.id, tasks],
   );
 
   useEffect(() => {
-    setIsEditingNotes(!task.description.trim());
+    setIsEditingNotes(false);
     setIsNotesExpanded(false);
+    setIsMetaExpanded(false);
     setDragTarget(null);
     setIsDraggingSubtask(false);
   }, [task.id]);
@@ -123,11 +130,11 @@ export const TaskModal: React.FC<{
             />
           </div>
 
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="mb-2 flex items-center justify-between">
               <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Notes</label>
               <div className="flex items-center gap-2">
-                {!isEditingNotes && shouldCollapseNotes && (
+                {!isEditingNotes && hasNotes && shouldCollapseNotes && (
                   <button
                     type="button"
                     onClick={() => setIsNotesExpanded((value) => !value)}
@@ -143,23 +150,31 @@ export const TaskModal: React.FC<{
                   className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                 >
                   <Pencil size={11} />
-                  {isEditingNotes ? 'Preview' : 'Edit'}
+                  {isEditingNotes ? 'Done' : hasNotes ? 'Edit' : 'Add'}
                 </button>
               </div>
             </div>
-            {isEditingNotes ? (
+            {!isEditingNotes && !hasNotes ? (
+              <button
+                type="button"
+                onClick={() => setIsEditingNotes(true)}
+                className="w-full rounded-xl border border-dashed soft-divider px-3 py-2.5 text-left text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-secondary)]"
+              >
+                Add notes for execution details or checklists
+              </button>
+            ) : isEditingNotes ? (
               <textarea
                 value={task.description}
                 onChange={(event) => onUpdate(task.id, { description: event.target.value })}
                 placeholder="Use markdown for headings, checklists, and execution notes."
-                className="markdown-preview min-h-[140px] w-full resize-y rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)]"
+                className={`markdown-preview w-full resize-y rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)] ${hasNotes ? 'min-h-[140px]' : 'min-h-[88px]'}`}
                 spellCheck={false}
               />
             ) : (
               <div className="relative overflow-hidden rounded-xl bg-[rgba(255,255,255,0.02)] p-3">
                 <div
                   className={`markdown-preview text-[12px] leading-relaxed text-[var(--text-secondary)] ${shouldCollapseNotes && !isNotesExpanded ? 'max-h-[180px] overflow-hidden' : ''}`}
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(task.description || '_No notes yet._') }}
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(task.description) }}
                 />
                 {shouldCollapseNotes && !isNotesExpanded && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[var(--panel-bg)] to-transparent" />
@@ -265,27 +280,64 @@ export const TaskModal: React.FC<{
           )}
         </div>
 
-        <div className="shrink-0 border-t soft-divider px-8 py-5">
-          <div className="mb-4 rounded-xl border border-dashed border-[var(--border-color)] px-3 py-2 text-[11px] text-[var(--text-muted)]"
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragTarget('detach');
-            }}
-            onDragLeave={() => setDragTarget((value) => value === 'detach' ? null : value)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragTarget(null);
-              const sourceId = event.dataTransfer.getData('taskId');
-              if (!sourceId) return;
-              detachSubtask(sourceId, { projectId: task.projectId, area: task.area });
-            }}
-            style={dragTarget === 'detach' ? { borderColor: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
-          >
-            Drop subtask here to make it a top-level task.
-          </div>
+        <div className="shrink-0 border-t soft-divider px-8 py-4">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsMetaExpanded(true)}
+                className="rounded-full bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                Status: {statusLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMetaExpanded(true)}
+                className="rounded-full bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                Due: {task.dueDate || 'No date'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMetaExpanded(true)}
+                className="rounded-full bg-[rgba(255,255,255,0.05)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                Project: {projectLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMetaExpanded((value) => !value)}
+                className="ml-auto flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                {isMetaExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                {isMetaExpanded ? 'Hide details' : 'More fields'}
+              </button>
+            </div>
 
-          <div className="space-y-4">
-            <div className="grid gap-5 sm:grid-cols-2">
+            {(isMetaExpanded || dragTarget === 'detach') && (
+              <div
+                className="rounded-xl border border-dashed border-[var(--border-color)] px-3 py-2 text-[11px] text-[var(--text-muted)]"
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragTarget('detach');
+                }}
+                onDragLeave={() => setDragTarget((value) => value === 'detach' ? null : value)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragTarget(null);
+                  const sourceId = event.dataTransfer.getData('taskId');
+                  if (!sourceId) return;
+                  detachSubtask(sourceId, { projectId: task.projectId, area: task.area });
+                }}
+                style={dragTarget === 'detach' ? { borderColor: 'var(--accent)', background: 'var(--accent-soft)' } : undefined}
+              >
+                Drop subtask here to make it a top-level task.
+              </div>
+            )}
+
+            {isMetaExpanded && (
+              <div className="space-y-3 rounded-xl bg-[rgba(255,255,255,0.02)] p-3">
+                <div className="grid gap-4 sm:grid-cols-2">
               <div
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -301,7 +353,7 @@ export const TaskModal: React.FC<{
                 }}
                 className={`rounded-lg ${dragTarget === 'project' ? 'bg-[var(--accent-soft)]' : ''}`}
               >
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Project</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Project</label>
                 <SmartSelect
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                   value={task.projectId || ''}
@@ -328,7 +380,7 @@ export const TaskModal: React.FC<{
                 }}
                 className={`rounded-lg ${dragTarget === 'area' ? 'bg-[var(--accent-soft)]' : ''}`}
               >
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Area</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Area</label>
                 <SmartSelect
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                   value={task.area}
@@ -339,7 +391,7 @@ export const TaskModal: React.FC<{
             </div>
 
             <div>
-              <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Parent Task</label>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Parent Task</label>
               <SmartSelect
                 className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                 value={task.parentId || ''}
@@ -349,11 +401,12 @@ export const TaskModal: React.FC<{
                 ]}
                 placeholder="Top level"
               />
+              <div className="mt-1 text-[10px] text-[var(--text-muted)]">Current: {parentLabel}</div>
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Status</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Status</label>
                 <SmartSelect
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                   value={task.status === 'completed' ? 'open' : task.status}
@@ -363,7 +416,7 @@ export const TaskModal: React.FC<{
               </div>
 
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Due Date</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Due Date</label>
                 <input
                   type="date"
                   value={task.dueDate || ''}
@@ -373,7 +426,7 @@ export const TaskModal: React.FC<{
               </div>
 
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Day Block</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Day Block</label>
                 <SmartSelect
                   className="w-full bg-transparent px-0 py-1.5 text-[14px] font-medium text-[var(--text-primary)] outline-none transition-colors hover:text-[var(--accent)] focus:text-[var(--accent)]"
                   value={task.dayPart || ''}
@@ -381,10 +434,11 @@ export const TaskModal: React.FC<{
                   options={DAY_PARTS}
                   placeholder="No Block"
                 />
+                <div className="mt-1 text-[10px] text-[var(--text-muted)]">Current: {dayBlockLabel}</div>
               </div>
 
               <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Tags</label>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] opacity-70">Tags</label>
                 <input
                   type="text"
                   value={tagValue}
@@ -396,12 +450,14 @@ export const TaskModal: React.FC<{
             </div>
 
             {task.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
+              <div className="flex flex-wrap gap-1.5">
                 {task.tags.map((tag) => (
                   <span key={tag} className="flex h-[22px] items-center rounded-md bg-[rgba(255,255,255,0.06)] px-2 text-[10.5px] font-bold text-[var(--text-secondary)]">
                     <span className="mr-0.5 opacity-40">#</span>{tag}
                   </span>
                 ))}
+              </div>
+            )}
               </div>
             )}
           </div>

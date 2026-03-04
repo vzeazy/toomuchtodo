@@ -131,7 +131,7 @@ export default function App() {
 
   const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
   const themeVariables = useMemo(() => getThemeVariables(activeTheme), [activeTheme]);
-  const isMobileViewport = useCallback(() => typeof window !== 'undefined' && window.innerWidth < 768, []);
+  const isCompactViewport = useCallback(() => typeof window !== 'undefined' && window.innerWidth < 1024, []);
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((prev) => !prev);
     setShowAreaMenu(false);
@@ -139,11 +139,11 @@ export default function App() {
     setShowMobileToolbarMenu(false);
   }, []);
   const collapseSidebarForMobileNavigation = useCallback(() => {
-    if (!isMobileViewport()) return;
+    if (!isCompactViewport()) return;
     setSidebarCollapsed(true);
     setShowAreaMenu(false);
     setProjectMenuId(null);
-  }, [isMobileViewport]);
+  }, [isCompactViewport]);
 
   const handleViewSelect = useCallback((event: React.MouseEvent | undefined, view: AppView, projectId: string | null = null, dateStr: string | null = null) => {
     const isMulti = event && (event.shiftKey || event.metaKey || event.ctrlKey);
@@ -348,9 +348,14 @@ export default function App() {
   }, [addTask, selectedArea, toggleSidebarCollapsed]);
 
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      setSidebarCollapsed(true);
-    }
+    const syncSidebarWithViewport = () => {
+      if (window.innerWidth < 1024) {
+        setSidebarCollapsed(true);
+      }
+    };
+    syncSidebarWithViewport();
+    window.addEventListener('resize', syncSidebarWithViewport);
+    return () => window.removeEventListener('resize', syncSidebarWithViewport);
   }, []);
 
   useEffect(() => {
