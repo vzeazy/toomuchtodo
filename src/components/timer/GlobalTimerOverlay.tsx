@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PictureInPicture2, Pause, Play, Square } from 'lucide-react';
+import { PictureInPicture2, Pause, Play, Square, Minimize2, Maximize2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { TaskPanelPictureInPictureBridge, TaskPanelPictureInPictureBridgeHandle } from '../../features/tasks/TaskPanelPictureInPictureBridge';
 import { getThemeVariables } from '../../lib/theme';
@@ -49,7 +49,7 @@ const parseCssColor = (value: string): RGB | null => {
 
 
 export function GlobalTimerOverlay() {
-    const { timer, tickTimer, pauseTimer, resumeTimer, stopTimer, activeTheme } = useAppStore();
+    const { timer, tickTimer, pauseTimer, resumeTimer, stopTimer, toggleTimerMinimized, activeTheme } = useAppStore();
     const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight });
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const smoothedLitCountRef = useRef(0);
@@ -86,8 +86,17 @@ export function GlobalTimerOverlay() {
         setSessionQuote((current) => current ?? motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)] ?? null);
     }, [timer.active, timer.linkedTaskId, timer.sessionTitle]);
 
-    const cols = Math.ceil(dims.w / DOT_GAP);
-    const rows = Math.ceil(dims.h / DOT_GAP);
+    const isMinimized = timer.minimized;
+
+    // Much denser gap for minimized vs before, plus slightly bigger dots for that specific tight view
+    const actualDotGap = isMinimized ? 12 : DOT_GAP;
+
+    // Grid bounded to either fullscreen or minimized box size
+    const targetW = isMinimized ? 340 : dims.w;
+    const targetH = isMinimized ? 260 : dims.h;
+
+    const cols = Math.ceil(targetW / actualDotGap);
+    const rows = Math.ceil(targetH / actualDotGap);
     const total = cols * rows;
 
     // fraction of time ELAPSED (not remaining) — dots light up as time passes
@@ -141,46 +150,81 @@ export function GlobalTimerOverlay() {
             }
             const drawCount = Math.floor(smoothedLitCountRef.current);
 
-            // Global pulse effect for glowing
-            const pulseAmount = timer.finished ? 0.3 * Math.sin(time / 250) : 0.1 * Math.sin(time / 500);
-            const globalPulse = (timer.finished ? 0.7 : 0.9) + pulseAmount;
+            // Global pulse for breathing - toned down the aggressive flashing
+            const pulseAmount = timer.finished ? 0.15 * Math.sin(time / 400) : 0.05 * Math.sin(time / 800);
+            const globalPulse = (timer.finished ? 0.8 : 0.95) + pulseAmount;
 
-            // 5 intensity bands for performance
-            const bands = 5;
+            // Use bands for performance
+            const bands = 7;
             const paths = Array.from({ length: bands }, () => new Path2D());
 
-            for (let i = 0; i < drawCount; i++) {
+            // Center of the screen for radial waves
+            const cx = dims.w / 2;
+            const cy = dims.h / 2;
+
+            const gridW = cols * actualDotGap;
+            const gridH = rows * actualDotGap;
+            const offsetX = (dims.w - gridW) / 2;
+            const offsetY = (dims.h - gridH) / 2;
+
+            // clamp draw count bounds in case smoothed count is drastically larger during layout transition
+            const safeDrawCount = Math.min(total, drawCount);
+
+            for (let i = 0; i < safeDrawCount; i++) {
                 const col = i % cols;
                 const row = Math.floor(i / cols);
-                const x = col * DOT_GAP + (DOT_GAP - DOT_D) / 2;
-                const y = row * DOT_GAP + (DOT_GAP - DOT_D) / 2;
+                const x = offsetX + col * actualDotGap + (actualDotGap - DOT_D) / 2;
+                const y = offsetY + row * actualDotGap + (actualDotGap - DOT_D) / 2;
 
-                // Slow diagonal cascading wave across the matrix
-                const wave = (Math.sin(col * 0.1 + row * 0.1 - time * 0.002) + 1) / 2;
+                // Create an interesting path movement / breathing feel
+                // Distance from center
+                const dx = x - cx;
+                const dy = y - cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
 
-                // Add a gentle shimmer
-                const shimmer = Math.sin(time * 0.005 + i * 0.01) * 0.1;
+                // A slow, gentle radial wave that breathes outward
+                const wave = Math.sin(dist / 120 - time / 1000);
 
-                let intensity = clamp01(0.4 + wave * 0.5 + shimmer);
+                // Add a gentle diagonal sweep to make it feel like "passage of time"
+                const sweep = Math.sin((x + y) / 200 + time / 1500);
 
-                // Highlight the "leading edge" of the timer dots brightly
+                // Combine them for an organic topographic feel
+                const heat = (wave + sweep) * 0.5;
+
+                // Base intensity 0.3, wave adds up to 0.7
+                let intensity = 0.3 + ((heat + 1) / 2) * 0.7;
+
+                // Highlight the "leading edge" of the timer dots
                 const distFromFront = drawCount - i;
-                if (!timer.paused && !timer.finished && distFromFront < cols * 3) {
-                    intensity = 1.0;
+                if (!timer.paused && !timer.finished && distFromFront < cols * 2) {
+                    intensity = Math.max(intensity, 0.8 + 0.2 * Math.sin(time / 200 + col * 0.1));
                 }
 
                 if (timer.paused && !timer.finished) {
-                    intensity = 0.3 + wave * 0.2; // Dim down when paused
+                    intensity = 0.2 + ((heat + 1) / 2) * 0.3; // Dim down when paused, still breathing
                 }
 
-                const bandIndex = Math.min(bands - 1, Math.floor(intensity * bands));
-                const drawSize = timer.paused && !timer.finished ? DOT_D_IDLE : DOT_D;
-                paths[bandIndex].rect(x, y, drawSize, drawSize);
+                const bandIndex = Math.min(bands - 1, Math.floor(clamp01(intensity) * bands));
+
+                // Slightly vary size based on the breathing wave for extra tactility
+                const sizeOffset = timer.paused ? 0 : heat * 0.5;
+                const baseIdleD = isMinimized ? 4.5 : DOT_D_IDLE;
+                const baseD = isMinimized ? 5.5 : DOT_D;
+                const drawSize = (timer.paused && !timer.finished ? baseIdleD : baseD) + sizeOffset;
+
+                paths[bandIndex].rect(x - sizeOffset / 2, y - sizeOffset / 2, drawSize, drawSize);
             }
 
             for (let b = 0; b < bands; b++) {
-                // Minimum opacity base, scaled linearly per band, then multiplied by global pulse
-                const alpha = (0.2 + 0.8 * ((b + 1) / bands)) * globalPulse;
+                // Opacity scales non-linearly to make the brighter parts pop
+                const normalizedBand = (b + 1) / bands;
+                let alpha = Math.pow(normalizedBand, 1.5) * globalPulse;
+
+                if (timer.finished) {
+                    // Flashier when done
+                    alpha *= 1.2;
+                }
+
                 ctx.globalAlpha = clamp01(alpha);
                 ctx.fillStyle = `rgb(${vividRgb.r}, ${vividRgb.g}, ${vividRgb.b})`;
                 ctx.fill(paths[b]);
@@ -192,8 +236,8 @@ export function GlobalTimerOverlay() {
         };
 
         if (timer.paused && !timer.finished) {
-            // Render a static frame if paused
-            render(0);
+            // Render one frame for paused
+            render(performance.now());
         } else {
             animationFrameId = requestAnimationFrame(render);
         }
@@ -203,7 +247,7 @@ export function GlobalTimerOverlay() {
                 cancelAnimationFrame(animationFrameId);
             }
         };
-    }, [dims, litCount, isDanger, timer.active, timer.paused, timer.finished, cols, rows, isPictureInPictureOpen]);
+    }, [dims, litCount, isDanger, timer.active, timer.paused, timer.finished, cols, rows, actualDotGap, total, isPictureInPictureOpen]);
 
     const handleTogglePictureInPicture = useCallback(async () => {
         if (!isPictureInPictureSupported) return;
@@ -231,6 +275,11 @@ export function GlobalTimerOverlay() {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 stopTimer();
+                return;
+            }
+            if (event.key.toLowerCase() === 'm') {
+                event.preventDefault();
+                toggleTimerMinimized();
                 return;
             }
             if (event.key.toLowerCase() === 'p' && isPictureInPictureSupported) {
@@ -261,13 +310,13 @@ export function GlobalTimerOverlay() {
                 animate={timer.finished ? {
                     scale: [1, 1.01, 1],
                     textShadow: [
+                        `0 0 ${6 * sizeScale}px ${accentColor}`,
                         `0 0 ${12 * sizeScale}px ${accentColor}`,
-                        `0 0 ${18 * sizeScale}px ${accentColor}`,
-                        `0 0 ${12 * sizeScale}px ${accentColor}`
+                        `0 0 ${6 * sizeScale}px ${accentColor}`
                     ]
                 } : {
                     scale: 1,
-                    textShadow: `0 0 ${8 * sizeScale}px ${accentColor}`
+                    textShadow: `0 0 ${4 * sizeScale}px ${accentColor}`
                 }}
                 transition={{ duration: 2.8, repeat: timer.finished ? Infinity : 0, ease: 'easeInOut' }}
                 style={{
@@ -282,31 +331,35 @@ export function GlobalTimerOverlay() {
                 {timer.finished ? '00:00' : timeStr}
             </motion.span>
 
-            <div style={{
-                fontSize: 20 * sizeScale,
-                fontWeight: 800,
-                color: 'rgba(255,255,255,0.6)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.2em',
-                marginTop: -4 * sizeScale,
-                maxWidth: 1000 * sizeScale,
-                textAlign: 'center',
-            }}>
-                {timer.finished ? 'SESSION COMPLETE' : (timer.paused ? 'Timer Paused' : (timer.sessionTitle || 'Deep Focus'))}
-            </div>
-            {!timer.finished && !timer.sessionTitle && !timer.linkedTaskId && sessionQuote && (
-                <div style={{
-                    marginTop: 10 * sizeScale,
-                    maxWidth: 820 * sizeScale,
-                    textAlign: 'center',
-                    fontSize: 17 * sizeScale,
-                    fontWeight: 600,
-                    lineHeight: 1.35,
-                    color: 'rgba(255,255,255,0.72)',
-                    letterSpacing: '-0.01em',
-                }}>
-                    “{sessionQuote}”
-                </div>
+            {!isMinimized && (
+                <>
+                    <div style={{
+                        fontSize: 20 * sizeScale,
+                        fontWeight: 800,
+                        color: 'rgba(255,255,255,0.6)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.2em',
+                        marginTop: -4 * sizeScale,
+                        maxWidth: 1000 * sizeScale,
+                        textAlign: 'center',
+                    }}>
+                        {timer.finished ? 'SESSION COMPLETE' : (timer.paused ? 'Timer Paused' : (timer.sessionTitle || 'Deep Focus'))}
+                    </div>
+                    {!timer.finished && !timer.sessionTitle && !timer.linkedTaskId && sessionQuote && (
+                        <div style={{
+                            marginTop: 10 * sizeScale,
+                            maxWidth: 820 * sizeScale,
+                            textAlign: 'center',
+                            fontSize: 17 * sizeScale,
+                            fontWeight: 600,
+                            lineHeight: 1.35,
+                            color: 'rgba(255,255,255,0.72)',
+                            letterSpacing: '-0.01em',
+                        }}>
+                            “{sessionQuote}”
+                        </div>
+                    )}
+                </>
             )}
         </motion.div>
     );
@@ -341,6 +394,8 @@ export function GlobalTimerOverlay() {
                             onPauseResume={timer.paused ? resumeTimer : pauseTimer}
                             onStop={stopTimer}
                             onTogglePIP={handleTogglePictureInPicture}
+                            onToggleMinimize={toggleTimerMinimized}
+                            isMinimized={isMinimized}
                             isPIP={true}
                             pipSupported={isPictureInPictureSupported}
                             shortcutsEnabled={false}
@@ -352,14 +407,37 @@ export function GlobalTimerOverlay() {
             <AnimatePresence>
                 {!isPictureInPictureOpen && (
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{
+                            opacity: 1,
+                            scale: 1,
+                            ...(isMinimized ? {
+                                top: 'auto',
+                                bottom: 24,
+                                left: 'auto',
+                                right: 24,
+                                width: 340,
+                                height: 260,
+                                borderRadius: 32,
+                                boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+                            } : {
+                                top: 0,
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                width: '100%',
+                                height: '100%',
+                                borderRadius: 0,
+                                boxShadow: 'none',
+                            })
+                        }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                         style={{
                             position: 'fixed',
-                            inset: 0,
                             zIndex: 8000,
                             overflow: 'hidden',
+                            // use absolute inset for non-minimized if needed, but framer-motion overrides it via top/bottom/left/right properties
                         }}
                     >
                         {/* 1. Backdrop Blur & Faded Layer */}
@@ -375,11 +453,13 @@ export function GlobalTimerOverlay() {
                         {/* 2. Timer Matrix (Canvas) */}
                         <canvas
                             ref={canvasRef}
-                            width={dims.w}
+                            width={dims.w} // keep full window dimensions for smooth transitions
                             height={dims.h}
                             style={{
                                 position: 'absolute',
-                                inset: 0,
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)',
                                 zIndex: 2,
                                 transition: 'opacity 0.5s ease',
                             }}
@@ -393,20 +473,24 @@ export function GlobalTimerOverlay() {
                             flexDirection: 'column',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            paddingBottom: isMinimized ? 44 : 0,
                             zIndex: 10,
                             pointerEvents: 'none',
                         }}>
-                            <ClockView />
+                            <ClockView sizeScale={isMinimized ? 0.65 : 1} />
                         </div>
 
-                        {/* 4. Controls HUD (Floating corner) */}
+                        {/* 4. Controls HUD (Floating corner or bottom) */}
                         <div
                             style={{
                                 position: 'absolute',
-                                bottom: 48,
-                                right: 48,
+                                bottom: isMinimized ? 16 : 48,
+                                right: isMinimized ? '50%' : 48,
+                                transform: isMinimized ? 'translateX(50%) scale(0.85)' : 'none',
                                 zIndex: 20,
-                                pointerEvents: 'auto'
+                                pointerEvents: 'auto',
+                                transformOrigin: 'bottom center',
+                                transition: 'all 0.4s ease',
                             }}
                         >
                             <TimerHUD
@@ -415,9 +499,11 @@ export function GlobalTimerOverlay() {
                                 onPauseResume={timer.paused ? resumeTimer : pauseTimer}
                                 onStop={stopTimer}
                                 onTogglePIP={handleTogglePictureInPicture}
+                                onToggleMinimize={toggleTimerMinimized}
+                                isMinimized={isMinimized}
                                 isPIP={false}
                                 pipSupported={isPictureInPictureSupported}
-                                shortcutsEnabled={true}
+                                shortcutsEnabled={!isMinimized}
                             />
                         </div>
                     </motion.div>
@@ -433,6 +519,8 @@ function TimerHUD({
     onPauseResume,
     onStop,
     onTogglePIP,
+    onToggleMinimize,
+    isMinimized,
     isPIP,
     pipSupported,
     shortcutsEnabled,
@@ -442,6 +530,8 @@ function TimerHUD({
     onPauseResume: () => void;
     onStop: () => void;
     onTogglePIP: () => void;
+    onToggleMinimize?: () => void;
+    isMinimized?: boolean;
     isPIP: boolean;
     pipSupported: boolean;
     shortcutsEnabled: boolean;
@@ -452,11 +542,11 @@ function TimerHUD({
             flexDirection: 'column',
             alignItems: 'stretch',
             gap: 8,
-            background: 'rgba(10, 14, 20, 0.72)',
+            background: isMinimized ? 'rgba(10, 14, 20, 0.4)' : 'rgba(10, 14, 20, 0.72)',
             backdropFilter: 'blur(40px)',
             border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 24,
-            padding: '10px 12px',
+            borderRadius: isMinimized ? 20 : 24,
+            padding: isMinimized ? '6px 8px' : '10px 12px',
             boxShadow: '0 25px 50px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.3)',
         }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -470,13 +560,15 @@ function TimerHUD({
                         border: '1px solid rgba(255,255,255,0.12)',
                         color: paused ? 'var(--accent-contrast)' : 'rgba(255,255,255,0.9)',
                         height: 44,
+                        width: isMinimized ? 44 : 'auto',
                         borderRadius: 14,
-                        padding: '0 18px',
+                        padding: isMinimized ? 0 : '0 18px',
                         fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'center',
                         gap: 8,
                         transition: 'background 0.2s, color 0.2s',
                         textTransform: 'uppercase',
@@ -485,7 +577,7 @@ function TimerHUD({
                     title={paused ? 'Resume (Space)' : 'Pause (Space)'}
                 >
                     {paused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
-                    {paused ? 'Resume' : 'Pause'}
+                    {!isMinimized && (paused ? 'Resume' : 'Pause')}
                 </motion.button>
 
                 {/* PiP Button — always rendered, disabled on non-HTTPS */}
@@ -515,6 +607,31 @@ function TimerHUD({
                     <PictureInPicture2 size={18} strokeWidth={2.2} />
                 </motion.button>
 
+                {/* Minimize Button */}
+                {onToggleMinimize && !isPIP && (
+                    <motion.button
+                        whileHover={{ scale: 1.06, backgroundColor: 'rgba(255,255,255,0.14)' }}
+                        whileTap={{ scale: 0.94 }}
+                        onClick={onToggleMinimize}
+                        style={{
+                            background: 'rgba(255,255,255,0.08)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            color: 'rgba(255,255,255,0.85)',
+                            width: 44,
+                            height: 44,
+                            borderRadius: 14,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            transition: 'background 0.2s',
+                        }}
+                        title={isMinimized ? 'Fullscreen (M)' : 'Minimize (M)'}
+                    >
+                        {isMinimized ? <Maximize2 size={18} strokeWidth={2.2} /> : <Minimize2 size={18} strokeWidth={2.2} />}
+                    </motion.button>
+                )}
+
                 {/* Stop Button */}
                 <motion.button
                     whileHover={{ scale: 1.03, background: 'rgba(215, 60, 60, 0.32)', borderColor: 'rgba(255, 107, 107, 0.55)' }}
@@ -525,13 +642,15 @@ function TimerHUD({
                         border: '1px solid rgba(215, 60, 60, 0.3)',
                         color: '#ff8a8a',
                         height: 44,
+                        width: isMinimized ? 44 : 'auto',
                         borderRadius: 14,
-                        padding: '0 16px',
+                        padding: isMinimized ? 0 : '0 16px',
                         fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'center',
                         gap: 8,
                         transition: 'all 0.2s',
                         textTransform: 'uppercase',
@@ -540,7 +659,7 @@ function TimerHUD({
                     title='Stop timer (Esc)'
                 >
                     <Square size={14} fill="currentColor" />
-                    Stop
+                    {!isMinimized && 'Stop'}
                 </motion.button>
             </div>
             {shortcutsEnabled && (
@@ -553,7 +672,7 @@ function TimerHUD({
                     textAlign: 'center',
                     paddingBottom: 2,
                 }}>
-                    Space Pause • Esc Stop • P Pop-out
+                    Space Pause • Esc Stop • M Min/Max • P PIP
                 </div>
             )}
         </div>

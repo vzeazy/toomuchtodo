@@ -79,6 +79,7 @@ export interface TimerState {
   sessionTitle: string | null;
   lastTick: number | null; // timestamp of last tick when active
   finished: boolean;
+  minimized: boolean;
 }
 
 export interface AppStateData {

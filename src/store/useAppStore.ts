@@ -47,6 +47,7 @@ const INITIAL_TIMER_STATE: TimerState = {
   sessionTitle: null,
   lastTick: null,
   finished: false,
+  minimized: false,
 };
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -455,6 +456,7 @@ export const useAppStore = () => {
         sessionTitle,
         lastTick: Date.now(),
         finished: false,
+        minimized: false,
       }
     }));
   }, []);
@@ -477,6 +479,13 @@ export const useAppStore = () => {
     setSharedState((prev) => ({
       ...prev,
       timer: INITIAL_TIMER_STATE
+    }));
+  }, []);
+
+  const toggleTimerMinimized = useCallback(() => {
+    setSharedState((prev) => ({
+      ...prev,
+      timer: { ...prev.timer, minimized: !prev.timer.minimized }
     }));
   }, []);
 
@@ -543,5 +552,6 @@ export const useAppStore = () => {
     resumeTimer,
     stopTimer,
     tickTimer,
+    toggleTimerMinimized,
   };
 };
