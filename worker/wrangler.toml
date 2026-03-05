@@ -1,0 +1,14 @@
+name = "too-much-to-do-api"
+main = "src/index.ts"
+compatibility_date = "2026-03-05"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "too-much-to-do"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+APP_SCHEMA_LATEST = "2"
+APP_SCHEMA_MIN_SUPPORTED = "2"
+SESSION_COOKIE_NAME = "tmtd_session"

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { moveTaskSubtree, moveTaskSubtreePreserveParent, updateTaskParent } from '../features/tasks/taskTree';
+import { authClient, AuthSession } from '../lib/sync/authClient';
+import { appendPendingOps, buildSyncOperations } from '../lib/sync/operations';
+import { runSyncOnce } from '../lib/sync/engine';
 import { builtInThemes } from '../themes/builtInThemes';
 import {
   AppDataExport,
@@ -7,6 +10,7 @@ import {
   AppStateData,
   PlannerWidthMode,
   Project,
+  SyncMeta,
   Task,
   TaskListExchange,
   TaskListImportMode,
@@ -16,11 +20,11 @@ import {
   ThemeDefinition,
   TimerState,
 } from '../types';
+import { LocalOnlyDriver } from './storage/localDriver';
+import { APP_SCHEMA_VERSION, createDefaultSyncMeta } from './storage/migrations';
 
-const STORAGE_KEY = 'too_much_to_do_state_v1';
-const LEGACY_TASKS_KEY = 'too_much_to_do_legacy_tasks';
-const LEGACY_PROJECTS_KEY = 'too_much_to_do_legacy_projects';
-const CURRENT_VERSION = 1;
+const driver = new LocalOnlyDriver();
+const CURRENT_VERSION = APP_SCHEMA_VERSION;
 
 const INITIAL_PROJECTS: Project[] = [];
 const LEGACY_BOOTSTRAP_PROJECT_COLORS = new Map<string, string>();
@@ -41,7 +45,7 @@ const INITIAL_SETTINGS: AppSettings = {
 const INITIAL_TIMER_STATE: TimerState = {
   active: false,
   paused: false,
-  duration: 1800, // 30 minutes default
+  duration: 1800,
   remaining: 1800,
   linkedTaskId: null,
   sessionTitle: null,
@@ -66,6 +70,8 @@ const normalizeTask = (task: Partial<Task>): Task => ({
   collapsed: typeof task.collapsed === 'boolean' ? task.collapsed : false,
   createdAt: typeof task.createdAt === 'number' ? task.createdAt : Date.now(),
   tags: Array.isArray(task.tags) ? task.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+  updatedAt: typeof task.updatedAt === 'number' ? task.updatedAt : (typeof task.createdAt === 'number' ? task.createdAt : Date.now()),
+  deletedAt: typeof task.deletedAt === 'number' ? task.deletedAt : null,
 });
 
 const dedupeThemes = (themes: ThemeDefinition[]) => {
@@ -81,49 +87,27 @@ const normalizeProject = (project: Partial<Project>): Project => ({
     ? undefined
     : typeof project.color === 'string' && project.color.trim() ? project.color : undefined,
   parentId: typeof project.parentId === 'string' ? project.parentId : null,
+  updatedAt: typeof project.updatedAt === 'number' ? project.updatedAt : Date.now(),
+  deletedAt: typeof project.deletedAt === 'number' ? project.deletedAt : null,
 });
 
-const getInitialState = (): AppStateData => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored) as Partial<AppStateData>;
-      return {
-        version: CURRENT_VERSION,
-        tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map(normalizeTask) : INITIAL_TASKS,
-        projects: Array.isArray(parsed.projects) ? parsed.projects.map(normalizeProject) : INITIAL_PROJECTS,
-        settings: {
-          activeThemeId: parsed.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
-          plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
-          taskListMode: (parsed.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
-          showCompletedTasks: parsed.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
-          hideEmptyProjectsInPlanner: parsed.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
-          compactEmptyDaysInPlanner: parsed.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
-          startPlannerOnToday: parsed.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
-          groupDayViewByPart: parsed.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
-        },
-        themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
-        timer: parsed.timer || INITIAL_TIMER_STATE,
-      };
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }
-
-  const legacyTasksRaw = localStorage.getItem(LEGACY_TASKS_KEY);
-  const legacyProjectsRaw = localStorage.getItem(LEGACY_PROJECTS_KEY);
-  const legacyTasks = legacyTasksRaw ? (JSON.parse(legacyTasksRaw) as Partial<Task>[]) : INITIAL_TASKS;
-  const legacyProjects = legacyProjectsRaw ? (JSON.parse(legacyProjectsRaw) as Partial<Project>[]) : INITIAL_PROJECTS;
-
-  return {
-    version: CURRENT_VERSION,
-    tasks: legacyTasks.map(normalizeTask),
-    projects: legacyProjects.map(normalizeProject),
-    settings: INITIAL_SETTINGS,
-    themes: builtInThemes,
-    timer: INITIAL_TIMER_STATE,
-  };
-};
+const normalizeState = (parsed: Partial<AppStateData>): AppStateData => ({
+  version: CURRENT_VERSION,
+  tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map(normalizeTask) : INITIAL_TASKS,
+  projects: Array.isArray(parsed.projects) ? parsed.projects.map(normalizeProject) : INITIAL_PROJECTS,
+  settings: {
+    activeThemeId: parsed.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
+    plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
+    taskListMode: (parsed.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
+    showCompletedTasks: parsed.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
+    hideEmptyProjectsInPlanner: parsed.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
+    compactEmptyDaysInPlanner: parsed.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
+    startPlannerOnToday: parsed.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
+    groupDayViewByPart: parsed.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
+  },
+  themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
+  timer: parsed.timer || INITIAL_TIMER_STATE,
+});
 
 export const createExportPayload = (state: AppStateData): AppDataExport => ({
   version: CURRENT_VERSION,
@@ -133,29 +117,198 @@ export const createExportPayload = (state: AppStateData): AppDataExport => ({
 });
 
 let memoryState: AppStateData | null = null;
+let memorySyncMeta: SyncMeta | null = null;
+let memoryAuthSession: AuthSession | null = null;
+let syncStatus = 'idle';
 const listeners = new Set<() => void>();
 
 function getSharedState() {
-  if (!memoryState) memoryState = getInitialState();
+  if (!memoryState) {
+    memoryState = normalizeState(driver.loadState());
+  }
   return memoryState;
 }
 
-function setSharedState(next: AppStateData | ((prev: AppStateData) => AppStateData)) {
-  const prev = getSharedState();
-  memoryState = typeof next === 'function' ? next(prev) : next;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryState));
+function getSharedSyncMeta() {
+  if (!memorySyncMeta) {
+    memorySyncMeta = driver.getSyncMeta();
+  }
+  return memorySyncMeta;
+}
+
+function setSharedSyncMeta(next: SyncMeta) {
+  memorySyncMeta = next;
+  driver.setSyncMeta(next);
+}
+
+function notifyListeners() {
   listeners.forEach((l) => l());
 }
 
+function setSharedState(
+  next: AppStateData | ((prev: AppStateData) => AppStateData),
+  options: { skipQueue?: boolean } = {},
+) {
+  const prev = getSharedState();
+  const normalized = normalizeState(typeof next === 'function' ? next(prev) : next);
+  memoryState = normalized;
+  driver.saveState(memoryState);
+
+  if (!options.skipQueue) {
+    const meta = getSharedSyncMeta();
+    const ops = buildSyncOperations(prev, memoryState, meta);
+    if (ops.length) {
+      setSharedSyncMeta(appendPendingOps(meta, ops));
+    }
+  }
+
+  notifyListeners();
+}
+
+const touchTask = (task: Task): Task => ({ ...task, updatedAt: Date.now() });
+const touchProject = (project: Project): Project => ({ ...project, updatedAt: Date.now() });
+
+const updateSyncStatus = (value: string) => {
+  syncStatus = value;
+  notifyListeners();
+};
+
+const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
+  const ts = Date.now();
+  return [
+    ...state.projects.map((project) => ({
+      id: uid('op'),
+      entity: 'project' as const,
+      action: 'upsert' as const,
+      recordId: project.id,
+      payload: project as unknown as Record<string, unknown>,
+      deviceId: meta.deviceId,
+      timestamp: ts,
+    })),
+    ...state.tasks.map((task) => ({
+      id: uid('op'),
+      entity: 'task' as const,
+      action: 'upsert' as const,
+      recordId: task.id,
+      payload: task as unknown as Record<string, unknown>,
+      deviceId: meta.deviceId,
+      timestamp: ts,
+    })),
+    {
+      id: uid('op'),
+      entity: 'settings' as const,
+      action: 'upsert' as const,
+      recordId: 'settings',
+      payload: state.settings as unknown as Record<string, unknown>,
+      deviceId: meta.deviceId,
+      timestamp: ts,
+    },
+  ];
+};
+
 export const useAppStore = () => {
   const [state, setLocalState] = useState<AppStateData>(getSharedState);
+  const [meta, setMeta] = useState<SyncMeta>(getSharedSyncMeta);
+  const [session, setSession] = useState<AuthSession | null>(memoryAuthSession);
+  const [syncState, setSyncState] = useState(syncStatus);
 
   useEffect(() => {
-    const listener = () => setLocalState(getSharedState());
+    const listener = () => {
+      setLocalState(getSharedState());
+      setMeta(getSharedSyncMeta());
+      setSession(memoryAuthSession);
+      setSyncState(syncStatus);
+    };
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
     };
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => {
+      if (getSharedSyncMeta().cloudLinked) {
+        runSyncNow().catch(() => {
+          updateSyncStatus('error');
+        });
+      }
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      memoryAuthSession = await authClient.getSession();
+      if (memoryAuthSession) {
+        const linked = getSharedSyncMeta();
+        setSharedSyncMeta({ ...linked, mode: 'account', cloudLinked: true });
+      }
+      notifyListeners();
+    } catch {
+      memoryAuthSession = null;
+      notifyListeners();
+    }
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    memoryAuthSession = await authClient.signUp(email, password);
+    const linked = getSharedSyncMeta();
+    const next = { ...linked, mode: 'account' as const, cloudLinked: true };
+    if (!next.syncCursor && !next.pendingOps.length) {
+      next.pendingOps = buildInitialLinkOps(getSharedState(), next);
+    }
+    setSharedSyncMeta(next);
+    notifyListeners();
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    memoryAuthSession = await authClient.signIn(email, password);
+    const linked = getSharedSyncMeta();
+    const next = { ...linked, mode: 'account' as const, cloudLinked: true };
+    if (!next.syncCursor && !next.pendingOps.length) {
+      next.pendingOps = buildInitialLinkOps(getSharedState(), next);
+    }
+    setSharedSyncMeta(next);
+    notifyListeners();
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await authClient.signOut();
+    memoryAuthSession = null;
+    const localMeta = getSharedSyncMeta();
+    setSharedSyncMeta({ ...localMeta, mode: 'local', cloudLinked: false });
+    notifyListeners();
+  }, []);
+
+  const setCloudLinked = useCallback((enabled: boolean) => {
+    const localMeta = getSharedSyncMeta();
+    const nextMeta = {
+      ...localMeta,
+      mode: enabled ? 'account' : 'local',
+      cloudLinked: enabled,
+    };
+    if (enabled && !nextMeta.syncCursor && !nextMeta.pendingOps.length) {
+      nextMeta.pendingOps = buildInitialLinkOps(getSharedState(), nextMeta);
+    }
+    setSharedSyncMeta(nextMeta);
+    notifyListeners();
+  }, []);
+
+  const runSyncNow = useCallback(async () => {
+    const currentMeta = getSharedSyncMeta();
+    if (!currentMeta.cloudLinked) return;
+
+    updateSyncStatus('syncing');
+    try {
+      const { state: nextState, meta: nextMeta } = await runSyncOnce(getSharedState(), currentMeta);
+      setSharedSyncMeta(nextMeta);
+      setSharedState(nextState, { skipQueue: true });
+      updateSyncStatus('idle');
+    } catch {
+      updateSyncStatus('error');
+      throw new Error('Sync failed');
+    }
   }, []);
 
   const addTask = useCallback((
@@ -168,6 +321,7 @@ export const useAppStore = () => {
     parentId: string | null = null,
     dayPart: DayPart | null = null,
   ) => {
+    const now = Date.now();
     const newTask: Task = {
       id: uid('task'),
       title,
@@ -180,8 +334,10 @@ export const useAppStore = () => {
       dayPart,
       parentId,
       collapsed: false,
-      createdAt: Date.now(),
+      createdAt: now,
       tags: [],
+      updatedAt: now,
+      deletedAt: null,
     };
 
     setSharedState((prev) => ({
@@ -195,7 +351,7 @@ export const useAppStore = () => {
   const updateTask = useCallback((id: string, updates: Partial<Task>) => {
     setSharedState((prev) => ({
       ...prev,
-      tasks: prev.tasks.map((task) => task.id === id ? normalizeTask({ ...task, ...updates, id: task.id }) : task),
+      tasks: prev.tasks.map((task) => task.id === id ? touchTask(normalizeTask({ ...task, ...updates, id: task.id })) : task),
     }));
   }, []);
 
@@ -207,7 +363,7 @@ export const useAppStore = () => {
 
       const nextTasks = [...prev.tasks];
       const [removed] = nextTasks.splice(oldIndex, 1);
-      nextTasks.splice(newIndex, 0, removed);
+      nextTasks.splice(newIndex, 0, touchTask(removed));
 
       return { ...prev, tasks: nextTasks };
     });
@@ -218,14 +374,14 @@ export const useAppStore = () => {
       ...prev,
       tasks: prev.tasks
         .filter((task) => task.id !== id)
-        .map((task) => task.parentId === id ? { ...task, parentId: null } : task),
+        .map((task) => task.parentId === id ? touchTask({ ...task, parentId: null }) : task),
     }));
   }, []);
 
   const toggleStar = useCallback((id: string) => {
     setSharedState((prev) => ({
       ...prev,
-      tasks: prev.tasks.map((task) => task.id === id ? { ...task, isStarred: !task.isStarred } : task),
+      tasks: prev.tasks.map((task) => task.id === id ? touchTask({ ...task, isStarred: !task.isStarred }) : task),
     }));
   }, []);
 
@@ -235,18 +391,19 @@ export const useAppStore = () => {
       tasks: prev.tasks.map((task) => {
         if (task.id !== id) return task;
         if (task.status === 'completed') {
-          return {
+          return touchTask({
             ...task,
             status: task.dueDate ? 'scheduled' : (task.projectId ? 'open' : 'next'),
-          };
+          });
         }
-        return { ...task, status: 'completed' };
+        return touchTask({ ...task, status: 'completed' });
       }),
     }));
   }, []);
 
   const addProject = useCallback((name: string, parentId: string | null = null, color?: string) => {
-    const project: Project = { id: uid('proj'), name, color, parentId };
+    const now = Date.now();
+    const project: Project = { id: uid('proj'), name, color, parentId, updatedAt: now, deletedAt: null };
     setSharedState((prev) => ({ ...prev, projects: [...prev.projects, project] }));
     return project.id;
   }, []);
@@ -254,7 +411,7 @@ export const useAppStore = () => {
   const updateProject = useCallback((id: string, updates: Partial<Project>) => {
     setSharedState((prev) => ({
       ...prev,
-      projects: prev.projects.map((project) => project.id === id ? normalizeProject({ ...project, ...updates, id: project.id }) : project),
+      projects: prev.projects.map((project) => project.id === id ? touchProject(normalizeProject({ ...project, ...updates, id: project.id })) : project),
     }));
   }, []);
 
@@ -270,12 +427,12 @@ export const useAppStore = () => {
         ...prev,
         projects: prev.projects
           .filter((project) => project.id !== id)
-          .map((project) => project.parentId === id ? { ...project, parentId: null } : project),
+          .map((project) => project.parentId === id ? touchProject({ ...project, parentId: null }) : project),
         tasks: deleteTasks
           ? prev.tasks
             .filter((task) => !removedTaskIds.has(task.id))
-            .map((task) => removedTaskIds.has(task.parentId || '') ? { ...task, parentId: null } : task)
-          : prev.tasks.map((task) => task.projectId === id ? { ...task, projectId: null } : task),
+            .map((task) => removedTaskIds.has(task.parentId || '') ? touchTask({ ...task, parentId: null }) : task)
+          : prev.tasks.map((task) => task.projectId === id ? touchTask({ ...task, projectId: null }) : task),
       };
     });
   }, []);
@@ -324,7 +481,7 @@ export const useAppStore = () => {
       const projectIdMap = new Map<string, string>();
 
       for (const project of payload.projects || []) {
-        const normalized = normalizeProject(project);
+        const normalized = touchProject(normalizeProject(project));
         const existing = nextProjects.find((item) => item.id === normalized.id);
         if (existing) {
           projectIdMap.set(project.id, existing.id);
@@ -356,7 +513,7 @@ export const useAppStore = () => {
       }
 
       const normalizedImportedTasks = incomingTasks.map((task) => {
-        const normalized = normalizeTask(task);
+        const normalized = touchTask(normalizeTask(task));
         const mappedId = idMap.get(task.id) || uid('task');
         const mappedParentId = normalized.parentId && incomingIds.has(normalized.parentId) ? idMap.get(normalized.parentId) || null : null;
         const mappedProjectId = normalized.projectId ? (projectIdMap.get(normalized.projectId) || normalized.projectId) : null;
@@ -418,29 +575,29 @@ export const useAppStore = () => {
   }, []);
 
   const setTaskParent = useCallback((taskId: string, parentId: string | null) => {
-    setSharedState((prev) => ({ ...prev, tasks: updateTaskParent(prev.tasks, taskId, parentId) }));
+    setSharedState((prev) => ({ ...prev, tasks: updateTaskParent(prev.tasks, taskId, parentId).map(touchTask) }));
   }, []);
 
   const moveTaskBefore = useCallback((sourceId: string, targetId: string, parentId: string | null) => {
-    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'before', parentId) }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'before', parentId).map(touchTask) }));
   }, []);
 
   const moveTaskAfter = useCallback((sourceId: string, targetId: string, parentId: string | null) => {
-    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'after', parentId) }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtree(prev.tasks, sourceId, targetId, 'after', parentId).map(touchTask) }));
   }, []);
 
   const moveTaskBeforeFlat = useCallback((sourceId: string, targetId: string) => {
-    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'before') }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'before').map(touchTask) }));
   }, []);
 
   const moveTaskAfterFlat = useCallback((sourceId: string, targetId: string) => {
-    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'after') }));
+    setSharedState((prev) => ({ ...prev, tasks: moveTaskSubtreePreserveParent(prev.tasks, sourceId, targetId, 'after').map(touchTask) }));
   }, []);
 
   const toggleTaskCollapsed = useCallback((taskId: string) => {
     setSharedState((prev) => ({
       ...prev,
-      tasks: prev.tasks.map((task) => task.id === taskId ? { ...task, collapsed: !task.collapsed } : task),
+      tasks: prev.tasks.map((task) => task.id === taskId ? touchTask({ ...task, collapsed: !task.collapsed }) : task),
     }));
   }, []);
 
@@ -495,12 +652,11 @@ export const useAppStore = () => {
       const now = Date.now();
       const deltaSeconds = Math.round((now - prev.timer.lastTick) / 1000);
 
-      if (deltaSeconds < 1) return prev; // Not enough time elapsed
+      if (deltaSeconds < 1) return prev;
 
       const nextRemaining = Math.max(0, prev.timer.remaining - deltaSeconds);
 
       if (nextRemaining === 0) {
-        // Option to handle timer completion here (e.g. stop automatically)
         return {
           ...prev,
           timer: { ...prev.timer, remaining: 0, paused: true, active: true, finished: true, lastTick: null }
@@ -521,6 +677,15 @@ export const useAppStore = () => {
   return {
     ...state,
     activeTheme,
+    syncMeta: meta,
+    syncStatus: syncState,
+    authSession: session,
+    refreshSession,
+    signUp,
+    signIn,
+    signOut,
+    setCloudLinked,
+    runSyncNow,
     addTask,
     updateTask,
     reorderTasks,
@@ -555,3 +720,9 @@ export const useAppStore = () => {
     toggleTimerMinimized,
   };
 };
+
+export const getCurrentSyncMeta = () => getSharedSyncMeta();
+export const setCurrentSyncMeta = (meta: SyncMeta) => setSharedSyncMeta(meta);
+export const getCurrentState = () => getSharedState();
+export const setCurrentState = (state: AppStateData) => setSharedState(state);
+export const getDefaultSyncMeta = () => createDefaultSyncMeta();

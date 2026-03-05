@@ -3,7 +3,8 @@ import { Copy, Download, Palette, Settings2, Upload } from 'lucide-react';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { getTaskListGenerationPrompt, isTaskListExchange } from '../../lib/taskListExchange';
 import { getThemePrompt, validateThemeDefinition } from '../../lib/theme';
-import { AppDataExport, Project, TaskListExchange, TaskListImportMode, TaskListScope, ThemeDefinition } from '../../types';
+import { AuthSession } from '../../lib/sync/authClient';
+import { AppDataExport, Project, SyncMeta, TaskListExchange, TaskListImportMode, TaskListScope, ThemeDefinition } from '../../types';
 
 export const SettingsView: React.FC<{
   projects: Project[];
@@ -17,6 +18,15 @@ export const SettingsView: React.FC<{
   onExportTaskListMarkdown: (scope: TaskListScope) => void;
   onCopyTaskListProgressPrompt: (scope: TaskListScope) => Promise<boolean>;
   onSaveTheme: (theme: ThemeDefinition) => void;
+  authSession: AuthSession | null;
+  syncMeta: SyncMeta;
+  syncStatus: string;
+  onRefreshSession: () => Promise<void>;
+  onSignIn: (email: string, password: string) => Promise<void>;
+  onSignUp: (email: string, password: string) => Promise<void>;
+  onSignOut: () => Promise<void>;
+  onToggleCloudLinked: (enabled: boolean) => void;
+  onRunSyncNow: () => Promise<void>;
 }> = ({
   projects,
   themes,
@@ -29,7 +39,18 @@ export const SettingsView: React.FC<{
   onExportTaskListMarkdown,
   onCopyTaskListProgressPrompt,
   onSaveTheme,
+  authSession,
+  syncMeta,
+  syncStatus,
+  onRefreshSession,
+  onSignIn,
+  onSignUp,
+  onSignOut,
+  onToggleCloudLinked,
+  onRunSyncNow,
 }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [themeBrief, setThemeBrief] = useState('');
   const [themeJson, setThemeJson] = useState('');
   const [llmProjectName, setLlmProjectName] = useState('');
@@ -132,6 +153,129 @@ export const SettingsView: React.FC<{
               }
             }}
           />
+        </div>
+      </section>
+
+      <section className="panel-surface rounded-[28px] p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <Settings2 size={18} className="text-[var(--accent)]" />
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Account + Sync</h2>
+        </div>
+        <div className="space-y-4">
+          {!authSession ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-2">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Email"
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Password"
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await onSignIn(email.trim(), password);
+                      setMessage('Signed in successfully.');
+                    } catch {
+                      setMessage('Sign in failed.');
+                    }
+                  }}
+                  className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await onSignUp(email.trim(), password);
+                      setMessage('Account created and signed in.');
+                    } catch {
+                      setMessage('Sign up failed.');
+                    }
+                  }}
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
+                >
+                  Sign up
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onRefreshSession();
+                    setMessage('Session refreshed.');
+                  }}
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
+                >
+                  Refresh session
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-[var(--text-secondary)]">
+                Signed in as <span className="font-semibold text-[var(--text-primary)]">{authSession.user.email}</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onSignOut();
+                    setMessage('Signed out.');
+                  }}
+                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
+                >
+                  Sign out
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="panel-muted rounded-2xl border soft-divider px-4 py-3 text-sm text-[var(--text-secondary)]">
+            <div className="font-semibold text-[var(--text-primary)]">Sync status: {syncStatus}</div>
+            <div>Mode: {syncMeta.mode}</div>
+            <div>Device ID: {syncMeta.deviceId}</div>
+            <div>Pending ops: {syncMeta.pendingOps.length}</div>
+            <div>Last sync: {syncMeta.lastSyncAt ? new Date(syncMeta.lastSyncAt).toLocaleString() : 'Never'}</div>
+            <div>Schema blocked: {syncMeta.schemaBlocked ? 'yes' : 'no'}</div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                onToggleCloudLinked(!syncMeta.cloudLinked);
+                setMessage(syncMeta.cloudLinked ? 'Switched to local-only mode.' : 'Cloud sync mode enabled.');
+              }}
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
+            >
+              {syncMeta.cloudLinked ? 'Disable cloud sync' : 'Enable cloud sync'}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await onRunSyncNow();
+                  setMessage('Sync complete.');
+                } catch {
+                  setMessage('Sync failed.');
+                }
+              }}
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
+            >
+              Run sync now
+            </button>
+          </div>
         </div>
       </section>
 

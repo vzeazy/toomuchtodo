@@ -1,0 +1,71 @@
+import { authRoutes } from './routes/auth';
+import { syncRoutes } from './routes/sync';
+import { Env } from './types';
+import { json } from './lib';
+
+const withCors = (response: Response, request: Request) => {
+  const headers = new Headers(response.headers);
+  const origin = request.headers.get('origin');
+  if (origin) {
+    headers.set('access-control-allow-origin', origin);
+    headers.set('vary', 'origin');
+    headers.set('access-control-allow-credentials', 'true');
+    headers.set('access-control-allow-headers', 'content-type');
+    headers.set('access-control-allow-methods', 'GET,POST,OPTIONS');
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+};
+
+const router = async (request: Request, env: Env): Promise<Response> => {
+  const { pathname } = new URL(request.url);
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204 });
+  }
+
+  if (pathname === '/health') {
+    return json({ ok: true, now: Date.now() });
+  }
+
+  if (pathname === '/api/auth/sign-up' && request.method === 'POST') {
+    return authRoutes.signUp(env, request);
+  }
+  if (pathname === '/api/auth/sign-in' && request.method === 'POST') {
+    return authRoutes.signIn(env, request);
+  }
+  if (pathname === '/api/auth/sign-out' && request.method === 'POST') {
+    return authRoutes.signOut(env, request);
+  }
+  if (pathname === '/api/auth/session' && request.method === 'GET') {
+    return authRoutes.session(env, request);
+  }
+
+  const guarded = await authRoutes.requireSession(env, request);
+  if (!guarded.session) return guarded.response as Response;
+
+  if (pathname === '/api/sync/bootstrap' && request.method === 'GET') {
+    return syncRoutes.bootstrap(env, request, guarded.session);
+  }
+  if (pathname === '/api/sync/push' && request.method === 'POST') {
+    return syncRoutes.push(env, request, guarded.session);
+  }
+  if (pathname === '/api/sync/pull' && request.method === 'GET') {
+    return syncRoutes.pull(env, request, guarded.session);
+  }
+
+  return json({ error: 'not_found' }, { status: 404 });
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      const response = await router(request, env);
+      return withCors(response, request);
+    } catch (error) {
+      return withCors(
+        json({ error: 'internal_error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 }),
+        request,
+      );
+    }
+  },
+};

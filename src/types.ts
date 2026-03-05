@@ -11,6 +11,8 @@ export interface Project {
   name: string;
   color?: string;
   parentId?: string | null;
+  updatedAt: number;
+  deletedAt: number | null;
 }
 
 export interface Task {
@@ -27,6 +29,8 @@ export interface Task {
   collapsed: boolean;
   createdAt: number;
   tags: string[];
+  updatedAt: number;
+  deletedAt: number | null;
 }
 
 export interface ThemeTokens {
@@ -91,6 +95,27 @@ export interface AppStateData {
   timer: TimerState;
 }
 
+export interface SyncOperation {
+  id: string;
+  entity: 'task' | 'project' | 'settings';
+  action: 'upsert' | 'delete';
+  recordId: string;
+  payload: Record<string, unknown>;
+  deviceId: string;
+  timestamp: number;
+}
+
+export interface SyncMeta {
+  mode: 'local' | 'account';
+  cloudLinked: boolean;
+  deviceId: string;
+  syncCursor: string | null;
+  lastSyncAt: number | null;
+  pendingOps: SyncOperation[];
+  localSchemaVersion: number;
+  schemaBlocked: boolean;
+}
+
 export interface AppDataExport {
   version: number;
   exportedAt: string;
@@ -125,6 +150,8 @@ export interface TaskListExchangeTask {
   collapsed: boolean;
   createdAt: number;
   tags: string[];
+  updatedAt?: number;
+  deletedAt?: number | null;
 }
 
 export interface TaskListExchange {

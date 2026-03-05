@@ -111,6 +111,15 @@ export default function App() {
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
     timer,
+    syncMeta,
+    syncStatus,
+    authSession,
+    refreshSession,
+    signUp,
+    signIn,
+    signOut,
+    setCloudLinked,
+    runSyncNow,
   } = useAppStore();
 
   const [currentView, setCurrentView] = useState<AppView>('planner');
@@ -357,6 +366,12 @@ export default function App() {
     window.addEventListener('resize', syncSidebarWithViewport);
     return () => window.removeEventListener('resize', syncSidebarWithViewport);
   }, []);
+
+  useEffect(() => {
+    refreshSession().catch(() => {
+      // local-only mode remains available if API/auth are not configured
+    });
+  }, [refreshSession]);
 
   useEffect(() => {
     if (!projectMenuId) return;
@@ -815,6 +830,15 @@ export default function App() {
                 return copyTextToClipboard(prompt);
               }}
               onSaveTheme={saveTheme}
+              authSession={authSession}
+              syncMeta={syncMeta}
+              syncStatus={syncStatus}
+              onRefreshSession={refreshSession}
+              onSignUp={signUp}
+              onSignIn={signIn}
+              onSignOut={signOut}
+              onToggleCloudLinked={setCloudLinked}
+              onRunSyncNow={runSyncNow}
             />
           )}
 

@@ -40,6 +40,8 @@ export const createTaskListExchangePayload = (
       collapsed: task.collapsed,
       createdAt: task.createdAt,
       tags: task.tags,
+      updatedAt: task.updatedAt,
+      deletedAt: task.deletedAt,
     })),
   };
 };

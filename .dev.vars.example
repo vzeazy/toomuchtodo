@@ -1,0 +1,4 @@
+# Worker local development variables
+SESSION_SECRET=replace-with-long-random-secret
+TURNSTILE_SECRET=
+TURNSTILE_ENABLED=false
