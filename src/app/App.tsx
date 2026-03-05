@@ -763,118 +763,93 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
-          {currentView === 'planner' && (
-            <PlannerView
-              weekDays={weekDays}
-              tasks={settings.showCompletedTasks ? tasks : tasks.filter(t => t.status !== 'completed')}
-              projects={projects}
-              widthMode={settings.plannerWidthMode}
-              selectedArea={selectedArea}
-              hideEmptyProjects={settings.hideEmptyProjectsInPlanner}
-              compactEmptyDays={settings.compactEmptyDaysInPlanner}
-              startOnToday={settings.startPlannerOnToday}
-              onUpdateTask={updateTask}
-              onMoveTaskBefore={moveTaskBeforeFlat}
-              onMoveTaskAfter={moveTaskAfterFlat}
-              onToggleComplete={toggleComplete}
-              onAddTask={(title, dueDate) => addTask(title, dueDate ? 'scheduled' : 'next', selectedArea || 'Personal', null, dueDate || null)}
-              onAddProjectTask={(title, projectId) => addTask(title, 'open', selectedArea || 'Personal', projectId, null)}
-              onOpenTask={setTaskToEditInModal}
-              onOpenProject={(projectId) => { setSelectedProjectId(projectId); setCurrentView('all'); collapseSidebarForMobileNavigation(); }}
-              onOpenDay={(dateStr) => {
-                setSelectedPlannerDate(dateStr);
-                setSelectedProjectId(null);
-                setCurrentView('day');
-                collapseSidebarForMobileNavigation();
-              }}
-              onToggleHideEmptyProjects={toggleHideEmptyProjectsInPlanner}
-              onToggleCompactEmptyDays={toggleCompactEmptyDaysInPlanner}
-              onToggleStartOnToday={toggleStartPlannerOnToday}
-            />
-          )}
+        <main className="flex-1 relative flex flex-col min-w-0">
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
+            {currentView === 'planner' && (
+              <PlannerView
+                weekDays={weekDays}
+                tasks={settings.showCompletedTasks ? tasks : tasks.filter(t => t.status !== 'completed')}
+                projects={projects}
+                widthMode={settings.plannerWidthMode}
+                selectedArea={selectedArea}
+                hideEmptyProjects={settings.hideEmptyProjectsInPlanner}
+                compactEmptyDays={settings.compactEmptyDaysInPlanner}
+                startOnToday={settings.startPlannerOnToday}
+                onUpdateTask={updateTask}
+                onMoveTaskBefore={moveTaskBeforeFlat}
+                onMoveTaskAfter={moveTaskAfterFlat}
+                onToggleComplete={toggleComplete}
+                onAddTask={(title, dueDate) => addTask(title, dueDate ? 'scheduled' : 'next', selectedArea || 'Personal', null, dueDate || null)}
+                onAddProjectTask={(title, projectId) => addTask(title, 'open', selectedArea || 'Personal', projectId, null)}
+                onOpenTask={setTaskToEditInModal}
+                onOpenProject={(projectId) => { setSelectedProjectId(projectId); setCurrentView('all'); collapseSidebarForMobileNavigation(); }}
+                onOpenDay={(dateStr) => {
+                  setSelectedPlannerDate(dateStr);
+                  setSelectedProjectId(null);
+                  setCurrentView('day');
+                  collapseSidebarForMobileNavigation();
+                }}
+                onToggleHideEmptyProjects={toggleHideEmptyProjectsInPlanner}
+                onToggleCompactEmptyDays={toggleCompactEmptyDaysInPlanner}
+                onToggleStartOnToday={toggleStartPlannerOnToday}
+              />
+            )}
 
-          {currentView === 'settings' && (
-            <SettingsView
-              projects={projects}
-              themes={themes}
-              activeThemeId={settings.activeThemeId}
-              onSetActiveTheme={setActiveTheme}
-              onExportData={() => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer }))}
-              onImportData={(payload) => {
-                if (!isAppExport(payload)) return;
-                importAppData(payload);
-              }}
-              onExportTaskListJson={(scope: TaskListScope) => {
-                const payload = createTaskListExchangePayload(tasks, projects, scope);
-                const scopeName = scope.type === 'inbox' ? 'inbox' : scope.projectId;
-                downloadJson(`too-much-to-do-${scopeName}-list-${new Date().toISOString().slice(0, 10)}.json`, payload);
-              }}
-              onImportTaskListJson={(payload, mode: TaskListImportMode) => {
-                if (!isTaskListExchange(payload)) return;
-                importTaskListData(payload, mode);
-              }}
-              onExportTaskListMarkdown={(scope: TaskListScope) => {
-                const markdown = createTaskListMarkdown(tasks, projects, scope);
-                const scopeName = scope.type === 'inbox' ? 'inbox' : scope.projectId;
-                const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `too-much-to-do-${scopeName}-list-${new Date().toISOString().slice(0, 10)}.md`;
-                link.click();
-                URL.revokeObjectURL(url);
-              }}
-              onCopyTaskListProgressPrompt={async (scope: TaskListScope) => {
-                const prompt = createTaskListProgressPrompt(tasks, projects, scope);
-                return copyTextToClipboard(prompt);
-              }}
-              onSaveTheme={saveTheme}
-              authSession={authSession}
-              syncMeta={syncMeta}
-              syncStatus={syncStatus}
-              onRefreshSession={refreshSession}
-              onSignUp={signUp}
-              onSignIn={signIn}
-              onSignOut={signOut}
-              onToggleCloudLinked={setCloudLinked}
-              onRunSyncNow={runSyncNow}
-            />
-          )}
+            {currentView === 'settings' && (
+              <SettingsView
+                projects={projects}
+                themes={themes}
+                activeThemeId={settings.activeThemeId}
+                onSetActiveTheme={setActiveTheme}
+                onExportData={() => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer }))}
+                onImportData={(payload) => {
+                  if (!isAppExport(payload)) return;
+                  importAppData(payload);
+                }}
+                onExportTaskListJson={(scope: TaskListScope) => {
+                  const payload = createTaskListExchangePayload(tasks, projects, scope);
+                  const scopeName = scope.type === 'inbox' ? 'inbox' : scope.projectId;
+                  downloadJson(`too-much-to-do-${scopeName}-list-${new Date().toISOString().slice(0, 10)}.json`, payload);
+                }}
+                onImportTaskListJson={(payload, mode: TaskListImportMode) => {
+                  if (!isTaskListExchange(payload)) return;
+                  importTaskListData(payload, mode);
+                }}
+                onExportTaskListMarkdown={(scope: TaskListScope) => {
+                  const markdown = createTaskListMarkdown(tasks, projects, scope);
+                  const scopeName = scope.type === 'inbox' ? 'inbox' : scope.projectId;
+                  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `too-much-to-do-${scopeName}-list-${new Date().toISOString().slice(0, 10)}.md`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }}
+                onCopyTaskListProgressPrompt={async (scope: TaskListScope) => {
+                  const prompt = createTaskListProgressPrompt(tasks, projects, scope);
+                  return copyTextToClipboard(prompt);
+                }}
+                onSaveTheme={saveTheme}
+                authSession={authSession}
+                syncMeta={syncMeta}
+                syncStatus={syncStatus}
+                onRefreshSession={refreshSession}
+                onSignUp={signUp}
+                onSignIn={signIn}
+                onSignOut={signOut}
+                onToggleCloudLinked={setCloudLinked}
+                onRunSyncNow={runSyncNow}
+              />
+            )}
 
-          {currentView === 'search' && (
-            <SearchView query={searchQuery} tasks={searchResults} projects={projects} onOpenTask={setTaskToEditInModal} />
-          )}
+            {currentView === 'search' && (
+              <SearchView query={searchQuery} tasks={searchResults} projects={projects} onOpenTask={setTaskToEditInModal} />
+            )}
 
-          {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
-            <>
-              {additionalPanels.length === 0 ? (
-                <TaskPanelWrapper
-                  panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
-                  tasks={tasks}
-                  projects={projects}
-                  settings={settings}
-                  themeVariables={themeVariables}
-                  selectedArea={selectedArea}
-                  expandedTaskId={expandedTaskId}
-                  setExpandedTaskId={setExpandedTaskId}
-                  addTask={addTask}
-                  setTaskListMode={setTaskListMode}
-                  toggleStar={toggleStar}
-                  toggleComplete={toggleComplete}
-                  updateTask={updateTask}
-                  reorderTasks={reorderTasks}
-                  moveTaskBefore={moveTaskBefore}
-                  moveTaskAfter={moveTaskAfter}
-                  toggleTaskCollapsed={toggleTaskCollapsed}
-                  deleteTask={deleteTask}
-                  setTaskToEditInModal={setTaskToEditInModal}
-                  onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
-                  onBack={currentView === 'day' ? () => handleViewSelect(undefined, 'planner') : undefined}
-                  isSingle={true}
-                />
-              ) : (
-                <div className="flex w-full h-full gap-4 overflow-x-auto pb-4" style={{ paddingRight: '20px' }}>
+            {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
+              <>
+                {additionalPanels.length === 0 ? (
                   <TaskPanelWrapper
                     panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
                     tasks={tasks}
@@ -895,11 +870,14 @@ export default function App() {
                     toggleTaskCollapsed={toggleTaskCollapsed}
                     deleteTask={deleteTask}
                     setTaskToEditInModal={setTaskToEditInModal}
+                    onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
+                    onBack={currentView === 'day' ? () => handleViewSelect(undefined, 'planner') : undefined}
+                    isSingle={true}
                   />
-                  {additionalPanels.map((panel) => (
+                ) : (
+                  <div className="flex w-full h-full gap-4 overflow-x-auto pb-4" style={{ paddingRight: '20px' }}>
                     <TaskPanelWrapper
-                      key={panel.id}
-                      panel={panel}
+                      panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
                       tasks={tasks}
                       projects={projects}
                       settings={settings}
@@ -918,17 +896,41 @@ export default function App() {
                       toggleTaskCollapsed={toggleTaskCollapsed}
                       deleteTask={deleteTask}
                       setTaskToEditInModal={setTaskToEditInModal}
-                      onClose={() => setAdditionalPanels((prev) => prev.filter((p) => p.id !== panel.id))}
                     />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
+                    {additionalPanels.map((panel) => (
+                      <TaskPanelWrapper
+                        key={panel.id}
+                        panel={panel}
+                        tasks={tasks}
+                        projects={projects}
+                        settings={settings}
+                        themeVariables={themeVariables}
+                        selectedArea={selectedArea}
+                        expandedTaskId={expandedTaskId}
+                        setExpandedTaskId={setExpandedTaskId}
+                        addTask={addTask}
+                        setTaskListMode={setTaskListMode}
+                        toggleStar={toggleStar}
+                        toggleComplete={toggleComplete}
+                        updateTask={updateTask}
+                        reorderTasks={reorderTasks}
+                        moveTaskBefore={moveTaskBefore}
+                        moveTaskAfter={moveTaskAfter}
+                        toggleTaskCollapsed={toggleTaskCollapsed}
+                        deleteTask={deleteTask}
+                        setTaskToEditInModal={setTaskToEditInModal}
+                        onClose={() => setAdditionalPanels((prev) => prev.filter((p) => p.id !== panel.id))}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <GlobalTimerOverlay />
         </main>
       </div>
 
-      <GlobalTimerOverlay />
       <GlobalTimerTrigger />
     </div>
   );
