@@ -364,9 +364,10 @@ export const TaskListView: React.FC<{
             bottom: Math.max(moveEvent.clientY, rect.top + marqueeStartRef.current.y - containerRef.current.scrollTop),
           };
 
-          const hitIds = Array.from(containerRef.current.querySelectorAll<HTMLElement>('[data-task-row="true"][data-task-id]'))
+          const hitIds = Array.from(containerRef.current.querySelectorAll('[data-task-row="true"][data-task-id]'))
             .filter((node) => {
-              const nodeRect = node.getBoundingClientRect();
+              const el = node as HTMLElement;
+              const nodeRect = el.getBoundingClientRect();
               return !(
                 nodeRect.right < selectionBounds.left ||
                 nodeRect.left > selectionBounds.right ||
@@ -374,7 +375,7 @@ export const TaskListView: React.FC<{
                 nodeRect.top > selectionBounds.bottom
               );
             })
-            .map((node) => node.dataset.taskId!)
+            .map((node) => (node as HTMLElement).dataset.taskId!)
             .filter(Boolean);
 
           setSelectedTaskIds(new Set(hitIds));
@@ -438,7 +439,7 @@ export const TaskListView: React.FC<{
 
     return (
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6 sm:mb-8">
+        <div className="task-list-header mb-6 sm:mb-8">
           {onBack && (
             <button
               type="button"
@@ -494,7 +495,7 @@ export const TaskListView: React.FC<{
             />
           )}
           {isGroupedDayView && focusedDayPartLabel && (
-            <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
+            <div className="day-part-header mb-4 flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
               <button
                 type="button"
                 onClick={() => setFocusedDayPart(null)}
