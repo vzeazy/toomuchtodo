@@ -6,21 +6,26 @@ export interface CommandItem {
   label: string;
   hint?: string;
   run: () => void;
+  disabled?: boolean;
 }
 
 export const CommandPalette: React.FC<{
   open: boolean;
   commands: CommandItem[];
+  resolveQuery?: (query: string) => CommandItem[] | null;
   onClose: () => void;
-}> = ({ open, commands, onClose }) => {
+}> = ({ open, commands, resolveQuery, onClose }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const trimmedQuery = query.trim();
+  const resolvedCommands = useMemo(() => resolveQuery?.(trimmedQuery) ?? null, [resolveQuery, trimmedQuery]);
 
   const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    if (resolvedCommands !== null) return resolvedCommands;
+    const normalized = trimmedQuery.toLowerCase();
     if (!normalized) return commands;
     return commands.filter((command) => `${command.label} ${command.hint || ''}`.toLowerCase().includes(normalized));
-  }, [commands, query]);
+  }, [commands, resolvedCommands, trimmedQuery]);
 
   React.useEffect(() => {
     if (!open) {
@@ -52,7 +57,7 @@ export const CommandPalette: React.FC<{
             } else if (event.key === 'Enter') {
               event.preventDefault();
               const command = filtered[selectedIndex];
-              if (!command) return;
+              if (!command || command.disabled) return;
               command.run();
               onClose();
             } else if (event.key === 'Escape') {
@@ -60,7 +65,7 @@ export const CommandPalette: React.FC<{
               onClose();
             }
           }}
-          placeholder="Run a command..."
+          placeholder="Run a command... (s:search, t:new task, timer:25 focus)"
           className="w-full border-b soft-divider bg-transparent px-5 py-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
         <div className="max-h-[50vh] overflow-y-auto p-2">
@@ -69,9 +74,15 @@ export const CommandPalette: React.FC<{
               key={command.id}
               type="button"
               onMouseEnter={() => setSelectedIndex(index)}
-              onClick={() => { command.run(); onClose(); }}
-              className={`flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-left transition-all ${selectedIndex === index ? 'bg-[var(--accent-soft)] text-[var(--text-primary)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.03)]'}`}
+              disabled={command.disabled}
+              onClick={() => {
+                if (command.disabled) return;
+                command.run();
+                onClose();
+              }}
+              className={`relative flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-left transition-all ${command.disabled ? 'cursor-default opacity-70' : ''} ${selectedIndex === index ? 'bg-[var(--accent-soft)]/85 text-[var(--text-primary)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_70%,transparent),0_8px_22px_rgba(0,0,0,0.22)] ring-1 ring-[color-mix(in_srgb,var(--accent)_35%,transparent)]' : 'text-[var(--text-primary)] hover:bg-[rgba(255,255,255,0.05)]'}`}
             >
+              {selectedIndex === index && <span className="absolute bottom-2 left-1 top-2 w-0.5 rounded-full bg-[var(--accent)]" />}
               <span className="text-[var(--text-primary)]">{command.label}</span>
               {command.hint && <span className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">{command.hint}</span>}
             </button>

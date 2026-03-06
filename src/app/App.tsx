@@ -38,6 +38,7 @@ import { ShortcutsModal } from '../components/ShortcutsModal';
 import { copyTextToClipboard } from '../lib/clipboard';
 import { formatDateKey, getWeekDays, getWeekRangeLabel } from '../lib/date';
 import { flattenProjectTree, getParentTaskCountsByProject } from '../lib/projectTree';
+import { searchTasks } from '../lib/taskSearch';
 import {
   createTaskListExchangePayload,
   createTaskListMarkdown,
@@ -111,6 +112,11 @@ export default function App() {
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
     timer,
+    startTimer,
+    pauseTimer,
+    resumeTimer,
+    stopTimer,
+    toggleTimerMinimized,
     syncMeta,
     syncStatus,
     authSession,
@@ -211,26 +217,7 @@ export default function App() {
   }, [tasks, settings.showCompletedTasks, todayDateKey]);
 
   const searchResults = useMemo(() => {
-    const normalized = searchQuery.trim().toLowerCase();
-    if (!normalized) return [];
-
-    let activeTasks = tasks;
-    if (!settings.showCompletedTasks) {
-      activeTasks = activeTasks.filter(t => t.status !== 'completed');
-    }
-
-    return activeTasks.filter((task) => {
-      const projectName = projects.find((project) => project.id === task.projectId)?.name || '';
-      const haystack = [
-        task.title,
-        task.description,
-        task.area,
-        task.status,
-        projectName,
-        task.tags.join(' '),
-      ].join(' ').toLowerCase();
-      return haystack.includes(normalized);
-    });
+    return searchTasks(tasks, projects, searchQuery, { includeCompleted: settings.showCompletedTasks });
   }, [projects, searchQuery, tasks, settings.showCompletedTasks]);
 
 
@@ -266,7 +253,120 @@ export default function App() {
     },
     { id: 'export-data', label: 'Export Data', hint: 'Data', run: () => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer })) },
     { id: 'shortcuts', label: 'Open Keyboard Shortcuts', hint: 'Help', run: () => setShowShortcutsModal(true) },
-  ], [projects, settings, tasks, themes, timer, setActiveTheme]);
+    { id: 'timer-25', label: 'Start 25m Timer', hint: 'Timer', run: () => startTimer(25 * 60, null, 'Focus Session') },
+    { id: 'timer-toggle-minimize', label: timer.minimized ? 'Expand Timer Overlay' : 'Minimize Timer Overlay', hint: 'Timer', run: () => toggleTimerMinimized(), disabled: !timer.active },
+  ], [projects, settings, tasks, themes, timer, setActiveTheme, startTimer, toggleTimerMinimized]);
+
+  const resolveCommandPaletteQuery = useCallback((rawQuery: string): CommandItem[] | null => {
+    const query = rawQuery.trim();
+    const lower = query.toLowerCase();
+
+    if (lower.startsWith('s:')) {
+      const term = query.slice(2).trim();
+      if (!term) {
+        return [{ id: 'search-help', label: 'Type after s: to search tasks', hint: 'Search', run: () => undefined, disabled: true }];
+      }
+      const results = searchTasks(tasks, projects, term, { includeCompleted: settings.showCompletedTasks }).slice(0, 12);
+      return [
+        {
+          id: 'search-open-view',
+          label: `Open full search for "${term}"`,
+          hint: 'Search',
+          run: () => {
+            setSearchQuery(term);
+            handleViewSelect(undefined, 'search');
+          },
+        },
+        ...results.map((task) => {
+          const projectLabel = projects.find((project) => project.id === task.projectId)?.name || 'No Project';
+          return {
+            id: `search-task-${task.id}`,
+            label: task.title,
+            hint: `${projectLabel} · ${task.status}`,
+            run: () => setTaskToEditInModal(task),
+          };
+        }),
+      ];
+    }
+
+    if (lower.startsWith('t:')) {
+      const title = query.slice(2).trim();
+      if (!title) {
+        return [{ id: 'task-help', label: 'Type after t: to add a task', hint: 'Task', run: () => undefined, disabled: true }];
+      }
+      return [
+        {
+          id: 'task-add-context',
+          label: `Add task: ${title}`,
+          hint: selectedProjectId ? 'Task · Current Project' : 'Task · Inbox',
+          run: () => {
+            addTask(title, selectedProjectId ? 'open' : 'inbox', selectedArea || 'Personal', selectedProjectId, null, true);
+          },
+        },
+      ];
+    }
+
+    const isTimerPrefix = lower.startsWith('timer:') || lower.startsWith('ti:');
+    if (isTimerPrefix) {
+      const rest = query.includes(':') ? query.slice(query.indexOf(':') + 1).trim() : '';
+      const match = rest.match(/^(\d+)(?:\s+(.*))?$/);
+      const explicitMinutes = match ? Number.parseInt(match[1], 10) : null;
+      const minutes = explicitMinutes ? Math.max(1, Math.min(240, explicitMinutes)) : 25;
+      const title = match?.[2]?.trim() || (!match && rest ? rest : '');
+      const sessionTitle = title || 'Focus Session';
+      const timerActions: CommandItem[] = [
+        {
+          id: 'timer-start-custom',
+          label: rest ? `Start ${minutes}m Timer${title ? ` · ${title}` : ''}` : 'Start 25m Focus Timer',
+          hint: 'Timer',
+          run: () => startTimer(minutes * 60, null, sessionTitle),
+        },
+      ];
+
+      if (timer.active) {
+        timerActions.unshift(
+          {
+            id: timer.paused ? 'timer-resume' : 'timer-pause',
+            label: timer.paused ? 'Resume Active Timer' : 'Pause Active Timer',
+            hint: 'Timer',
+            run: () => (timer.paused ? resumeTimer() : pauseTimer()),
+          },
+          {
+            id: 'timer-stop',
+            label: 'Stop Active Timer',
+            hint: 'Timer',
+            run: () => stopTimer(),
+          },
+          {
+            id: 'timer-toggle-size',
+            label: timer.minimized ? 'Expand Timer Overlay' : 'Minimize Timer Overlay',
+            hint: 'Timer',
+            run: () => toggleTimerMinimized(),
+          }
+        );
+      }
+
+      return timerActions;
+    }
+
+    return null;
+  }, [
+    addTask,
+    handleViewSelect,
+    pauseTimer,
+    projects,
+    resumeTimer,
+    selectedArea,
+    selectedProjectId,
+    settings.showCompletedTasks,
+    startTimer,
+    stopTimer,
+    tasks,
+    timer.active,
+    timer.minimized,
+    timer.paused,
+    toggleTimerMinimized,
+  ]);
 
   const plannerWidthOptions: Array<{ id: PlannerWidthMode; label: string; icon: typeof Columns }> = [
     { id: 'container', label: 'Fit', icon: Columns },
@@ -410,7 +510,7 @@ export default function App() {
   return (
     <div className="app-frame flex h-screen flex-col select-none" style={themeVariables}>
       {showShortcutsModal && <ShortcutsModal onClose={() => setShowShortcutsModal(false)} />}
-      <CommandPalette open={showCommandPalette} commands={commands} onClose={() => setShowCommandPalette(false)} />
+      <CommandPalette open={showCommandPalette} commands={commands} resolveQuery={resolveCommandPaletteQuery} onClose={() => setShowCommandPalette(false)} />
 
       {taskToEditInModal && (
         <TaskModal

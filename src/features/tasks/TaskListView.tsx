@@ -6,7 +6,21 @@ import { OutlineTaskRow } from './OutlineTaskRow';
 import { TaskRow } from './TaskRow';
 import { buildVisibleTaskTree, canReparentTask } from './taskTree';
 
-type FocusedDayPart = DayPart | 'unassigned' | null;
+type FocusedGroupedSection = string | null;
+
+type GroupedSection = {
+  key: DayPart | null;
+  id: string;
+  label: string;
+  listTasks: Task[];
+  outlineRows: ReturnType<typeof buildVisibleTaskTree>;
+};
+
+type GroupingStrategy = {
+  sections: Array<{ key: DayPart | null; id: string; label: string }>;
+  getTaskGroupKey: (task: Task) => DayPart | null;
+  assignTaskToGroup: (taskId: string, key: DayPart | null) => void;
+};
 
 export const TaskListView: React.FC<{
   tasks: Task[];
@@ -68,14 +82,15 @@ export const TaskListView: React.FC<{
   onBack,
 }) => {
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-    const [dragOverDayPart, setDragOverDayPart] = useState<string | null>(null);
+    const [dragOverGroupedSection, setDragOverGroupedSection] = useState<string | null>(null);
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
     const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
     const [marqueeRect, setMarqueeRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-    const [focusedDayPart, setFocusedDayPart] = useState<FocusedDayPart>(null);
+    const [focusedGroupedSection, setFocusedGroupedSection] = useState<FocusedGroupedSection>(null);
     const containerRef = React.useRef<HTMLDivElement>(null);
     const marqueeStartRef = React.useRef<{ x: number; y: number } | null>(null);
     const lastParentIdForGhost = React.useRef<string | null>(null);
+    const groupedInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
 
     const listTasks = useMemo(() => {
       return [...tasks].sort((left, right) => {
@@ -99,27 +114,36 @@ export const TaskListView: React.FC<{
     const isScheduledView = currentView === 'scheduled';
     const isGroupedDayView = currentView === 'day' && groupDayViewByPart;
 
-    const dayPartSections = useMemo(() => {
-      const order: Array<{ key: DayPart | null; id: string; label: string }> = [
-        { key: null, id: 'unassigned', label: 'Unassigned' },
-        { key: 'morning', id: 'morning', label: 'Morning' },
-        { key: 'afternoon', id: 'afternoon', label: 'Afternoon' },
-        { key: 'evening', id: 'evening', label: 'Evening' },
-      ];
-      return order.map((section) => ({
+    const groupingStrategy = useMemo<GroupingStrategy | null>(() => {
+      if (!isGroupedDayView) return null;
+      return {
+        sections: [
+          { key: null, id: 'unassigned', label: 'Unassigned' },
+          { key: 'morning', id: 'morning', label: 'Morning' },
+          { key: 'afternoon', id: 'afternoon', label: 'Afternoon' },
+          { key: 'evening', id: 'evening', label: 'Evening' },
+        ],
+        getTaskGroupKey: (task) => task.dayPart,
+        assignTaskToGroup: (taskId, key) => onUpdateTask(taskId, { dayPart: key }),
+      };
+    }, [isGroupedDayView, onUpdateTask]);
+
+    const groupedSections = useMemo((): GroupedSection[] => {
+      if (!groupingStrategy) return [];
+      return groupingStrategy.sections.map((section) => ({
         ...section,
-        listTasks: visibleListTasks.filter((task) => task.dayPart === section.key),
-        outlineRows: outlineRows.filter((row) => row.task.dayPart === section.key),
+        listTasks: visibleListTasks.filter((task) => groupingStrategy.getTaskGroupKey(task) === section.key),
+        outlineRows: outlineRows.filter((row) => groupingStrategy.getTaskGroupKey(row.task) === section.key),
       }));
-    }, [outlineRows, visibleListTasks]);
-    const visibleDayPartSections = useMemo(() => {
-      const sections = dayPartSections.filter((section) => section.key !== null || section.listTasks.length > 0 || section.outlineRows.length > 0 || dragOverDayPart === section.id);
-      if (!focusedDayPart) return sections;
-      return sections.filter((section) => section.id === focusedDayPart);
-    }, [dayPartSections, dragOverDayPart, focusedDayPart]);
-    const focusedDayPartLabel = useMemo(
-      () => dayPartSections.find((section) => section.id === focusedDayPart)?.label ?? null,
-      [dayPartSections, focusedDayPart]
+    }, [groupingStrategy, outlineRows, visibleListTasks]);
+    const visibleGroupedSections = useMemo(() => {
+      const sections = groupedSections.filter((section) => section.key !== null || section.listTasks.length > 0 || section.outlineRows.length > 0 || dragOverGroupedSection === section.id);
+      if (!focusedGroupedSection) return sections;
+      return sections.filter((section) => section.id === focusedGroupedSection);
+    }, [groupedSections, dragOverGroupedSection, focusedGroupedSection]);
+    const focusedGroupedSectionLabel = useMemo(
+      () => groupedSections.find((section) => section.id === focusedGroupedSection)?.label ?? null,
+      [groupedSections, focusedGroupedSection]
     );
 
     const scheduledListGroups = useMemo(() => {
@@ -159,13 +183,13 @@ export const TaskListView: React.FC<{
     }, [isScheduledView, outlineRows, taskListMode]);
 
     const orderedVisibleTaskIds = useMemo(() => {
-      if (isGroupedDayView && taskListMode === 'list') return dayPartSections.flatMap((section) => section.listTasks.map((task) => task.id));
-      if (isGroupedDayView && taskListMode === 'outline') return dayPartSections.flatMap((section) => section.outlineRows.map((row) => row.task.id));
+      if (isGroupedDayView && taskListMode === 'list') return groupedSections.flatMap((section) => section.listTasks.map((task) => task.id));
+      if (isGroupedDayView && taskListMode === 'outline') return groupedSections.flatMap((section) => section.outlineRows.map((row) => row.task.id));
       if (isScheduledView && taskListMode === 'list') return scheduledListGroups.flatMap((group) => group.items.map((task) => task.id));
       if (isScheduledView && taskListMode === 'outline') return scheduledOutlineGroups.flatMap((group) => group.rows.map((row) => row.task.id));
       if (taskListMode === 'outline') return outlineRows.map((row) => row.task.id);
       return visibleListTasks.map((task) => task.id);
-    }, [dayPartSections, isGroupedDayView, isScheduledView, outlineRows, scheduledListGroups, scheduledOutlineGroups, taskListMode, visibleListTasks]);
+    }, [groupedSections, isGroupedDayView, isScheduledView, outlineRows, scheduledListGroups, scheduledOutlineGroups, taskListMode, visibleListTasks]);
 
     const canIndentTask = (taskId: string) => {
       const index = outlineRows.findIndex((row) => row.task.id === taskId);
@@ -269,8 +293,18 @@ export const TaskListView: React.FC<{
       }
     };
 
-    const assignTaskToDayPart = (taskId: string, dayPart: DayPart | null) => {
-      onUpdateTask(taskId, { dayPart });
+    const assignTaskToGroupedSection = (taskId: string, dayPart: DayPart | null) => {
+      if (!groupingStrategy) return;
+      groupingStrategy.assignTaskToGroup(taskId, dayPart);
+    };
+
+    const handleGroupedInputNavigation = (sectionId: string, direction: 'up' | 'down') => {
+      const currentIndex = visibleGroupedSections.findIndex((section) => section.id === sectionId);
+      if (currentIndex === -1) return;
+      const delta = direction === 'down' ? 1 : -1;
+      const nextSection = visibleGroupedSections[currentIndex + delta];
+      if (!nextSection) return;
+      groupedInputRefs.current[nextSection.id]?.focus();
     };
 
     const clearSelection = () => {
@@ -315,12 +349,12 @@ export const TaskListView: React.FC<{
     }, [orderedVisibleTaskIds, selectionAnchorId]);
 
     React.useEffect(() => {
-      if (!focusedDayPart) return;
-      const stillExists = dayPartSections.some((section) => section.id === focusedDayPart && (section.key !== null || section.listTasks.length > 0 || section.outlineRows.length > 0));
-      if (!stillExists && dragOverDayPart !== focusedDayPart) {
-        setFocusedDayPart(null);
+      if (!focusedGroupedSection) return;
+      const stillExists = groupedSections.some((section) => section.id === focusedGroupedSection && (section.key !== null || section.listTasks.length > 0 || section.outlineRows.length > 0));
+      if (!stillExists && dragOverGroupedSection !== focusedGroupedSection) {
+        setFocusedGroupedSection(null);
       }
-    }, [dayPartSections, dragOverDayPart, focusedDayPart]);
+    }, [dragOverGroupedSection, focusedGroupedSection, groupedSections]);
 
     const handleBulkToggleComplete = () => {
       selectedTaskIds.forEach((taskId) => onToggleComplete(taskId));
@@ -494,52 +528,52 @@ export const TaskListView: React.FC<{
               }}
             />
           )}
-          {isGroupedDayView && focusedDayPartLabel && (
+          {isGroupedDayView && focusedGroupedSectionLabel && (
             <div className="day-part-header mb-4 flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">
               <button
                 type="button"
-                onClick={() => setFocusedDayPart(null)}
+                onClick={() => setFocusedGroupedSection(null)}
                 className="inline-flex items-center gap-1.5 transition-colors hover:text-[var(--text-primary)]"
               >
                 <ChevronLeft size={13} />
                 <span>Day</span>
               </button>
               <span className="opacity-40">/</span>
-              <span className="text-[var(--text-primary)]">{focusedDayPartLabel}</span>
+              <span className="text-[var(--text-primary)]">{focusedGroupedSectionLabel}</span>
             </div>
           )}
           {isGroupedDayView && taskListMode === 'list' ? (
             <>
-              {visibleDayPartSections.map((section) => (
+              {visibleGroupedSections.map((section) => (
                 <section
                   key={section.id}
-                  className={`mb-5 last:mb-0 rounded-2xl transition-colors ${dragOverDayPart === section.id ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
+                  className={`mb-5 last:mb-0 rounded-2xl transition-colors ${dragOverGroupedSection === section.id ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
                   onDragOver={(event) => {
                     const hasTaskDragPayload = Array.from(event.dataTransfer.types || []).includes('taskid');
                     if (!hasTaskDragPayload) return;
                     event.preventDefault();
-                    setDragOverDayPart(section.id);
+                    setDragOverGroupedSection(section.id);
                   }}
                   onDragLeave={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                      setDragOverDayPart((current) => current === section.id ? null : current);
+                      setDragOverGroupedSection((current) => current === section.id ? null : current);
                     }
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    setDragOverDayPart(null);
+                    setDragOverGroupedSection(null);
                     const taskId = event.dataTransfer.getData('taskId');
                     if (!taskId) return;
                     const lastTask = section.listTasks[section.listTasks.length - 1];
                     if (lastTask) handleMoveTaskGroupAfterList(taskId, lastTask.id);
-                    getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                    getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                   }}
                 >
-                  <div className={`mb-2 flex items-center border-b soft-divider pb-2 ${focusedDayPart === section.id ? 'justify-end' : 'justify-between'}`}>
-                    {focusedDayPart !== section.id && (
+                  <div className={`mb-2 flex items-center border-b soft-divider pb-2 ${focusedGroupedSection === section.id ? 'justify-end' : 'justify-between'}`}>
+                    {focusedGroupedSection !== section.id && (
                       <button
                         type="button"
-                        onClick={() => setFocusedDayPart(section.id as FocusedDayPart)}
+                        onClick={() => setFocusedGroupedSection(section.id)}
                         className="inline-flex items-center gap-2 rounded-full px-1 py-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                       >
                         <span>{section.label}</span>
@@ -553,7 +587,7 @@ export const TaskListView: React.FC<{
                       onDropTask={(taskId) => {
                         const firstTask = section.listTasks[0];
                         if (firstTask) handleMoveTaskGroupBeforeList(taskId, firstTask.id);
-                        getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                        getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                       }}
                     />
                     {section.listTasks.map((task) => (
@@ -573,15 +607,15 @@ export const TaskListView: React.FC<{
                         onUpdate={onUpdateTask}
                         onMoveBefore={(sourceId, targetId) => {
                           handleMoveTaskGroupBeforeList(sourceId, targetId);
-                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                         }}
                         onMoveAfter={(sourceId, targetId) => {
                           handleMoveTaskGroupAfterList(sourceId, targetId);
-                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                         }}
                         onNestInto={(sourceId, targetId) => {
                           handleNestTaskGroupList(sourceId, targetId);
-                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                         }}
                         onDelete={onDeleteTask}
                         onOpenTask={onOpenTask}
@@ -592,7 +626,11 @@ export const TaskListView: React.FC<{
                     <GhostItem
                       placeholder={`Add to ${section.label.toLowerCase()}...`}
                       onAdd={(title) => onAddTask(title, section.key)}
-                      className="mt-2 px-4 py-2 opacity-40 hover:opacity-100"
+                      inputRef={(element) => {
+                        groupedInputRefs.current[section.id] = element;
+                      }}
+                      onArrowNavigate={(direction) => handleGroupedInputNavigation(section.id, direction)}
+                      className="mt-2 px-4 py-2 opacity-80 hover:opacity-100"
                       iconSize={14}
                     />
                   </div>
@@ -601,36 +639,36 @@ export const TaskListView: React.FC<{
             </>
           ) : isGroupedDayView && taskListMode === 'outline' ? (
             <>
-              {visibleDayPartSections.map((section) => (
+              {visibleGroupedSections.map((section) => (
                 <section
                   key={section.id}
-                  className={`mb-5 last:mb-0 rounded-2xl transition-colors ${dragOverDayPart === section.id ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
+                  className={`mb-5 last:mb-0 rounded-2xl transition-colors ${dragOverGroupedSection === section.id ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
                   onDragOver={(event) => {
                     const hasTaskDragPayload = Array.from(event.dataTransfer.types || []).includes('taskid');
                     if (!hasTaskDragPayload) return;
                     event.preventDefault();
-                    setDragOverDayPart(section.id);
+                    setDragOverGroupedSection(section.id);
                   }}
                   onDragLeave={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                      setDragOverDayPart((current) => current === section.id ? null : current);
+                      setDragOverGroupedSection((current) => current === section.id ? null : current);
                     }
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
-                    setDragOverDayPart(null);
+                    setDragOverGroupedSection(null);
                     const taskId = event.dataTransfer.getData('taskId');
                     if (!taskId) return;
                     const lastRow = section.outlineRows[section.outlineRows.length - 1];
                     if (lastRow) handleMoveTaskGroupAfterList(taskId, lastRow.task.id);
-                    getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                    getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                   }}
                 >
-                  <div className={`mb-2 flex items-center border-b soft-divider pb-2 ${focusedDayPart === section.id ? 'justify-end' : 'justify-between'}`}>
-                    {focusedDayPart !== section.id && (
+                  <div className={`mb-2 flex items-center border-b soft-divider pb-2 ${focusedGroupedSection === section.id ? 'justify-end' : 'justify-between'}`}>
+                    {focusedGroupedSection !== section.id && (
                       <button
                         type="button"
-                        onClick={() => setFocusedDayPart(section.id as FocusedDayPart)}
+                        onClick={() => setFocusedGroupedSection(section.id)}
                         className="inline-flex items-center gap-2 rounded-full px-1 py-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                       >
                         <span>{section.label}</span>
@@ -644,7 +682,7 @@ export const TaskListView: React.FC<{
                       onDropTask={(taskId) => {
                         const firstRow = section.outlineRows[0];
                         if (firstRow) handleMoveTaskGroupBeforeList(taskId, firstRow.task.id);
-                        getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                        getOrderedDraggedTaskIds(taskId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                       }}
                     />
                     {section.outlineRows.map((row) => (
@@ -677,15 +715,15 @@ export const TaskListView: React.FC<{
                         onMoveDown={handleMoveTaskDown}
                         onMoveBefore={(sourceId, targetId) => {
                           handleMoveTaskGroupBeforeList(sourceId, targetId);
-                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                         }}
                         onMoveAfter={(sourceId, targetId) => {
                           handleMoveTaskGroupAfterList(sourceId, targetId);
-                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                         }}
                         onNestInto={(sourceId, targetId) => {
                           handleNestTaskGroupList(sourceId, targetId);
-                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToDayPart(draggedTaskId, section.key));
+                          getOrderedDraggedTaskIds(sourceId).forEach((draggedTaskId) => assignTaskToGroupedSection(draggedTaskId, section.key));
                         }}
                         canNestTask={(sourceId, targetId) => canReparentTask(sourceId, targetId, allTasks)}
                         onAddSubtask={onAddSubtask}
@@ -694,7 +732,11 @@ export const TaskListView: React.FC<{
                     <GhostItem
                       placeholder={`Add to ${section.label.toLowerCase()}...`}
                       onAdd={(title) => onAddTask(title, section.key)}
-                      className="mt-2 px-4 py-2 opacity-40 hover:opacity-100"
+                      inputRef={(element) => {
+                        groupedInputRefs.current[section.id] = element;
+                      }}
+                      onArrowNavigate={(direction) => handleGroupedInputNavigation(section.id, direction)}
+                      className="mt-2 px-4 py-2 opacity-80 hover:opacity-100"
                       iconSize={14}
                     />
                   </div>
@@ -884,7 +926,7 @@ export const TaskListView: React.FC<{
             <GhostItem
               placeholder={taskListMode === 'outline' ? 'Tab to indent... Or type a top bullet' : 'Click to add a new task...'}
               onAdd={handleAddTask}
-              className="mt-3 px-5 py-3 opacity-50 hover:opacity-100"
+              className="mt-3 px-5 py-3 opacity-85 hover:opacity-100"
               iconSize={16}
             />
           )}

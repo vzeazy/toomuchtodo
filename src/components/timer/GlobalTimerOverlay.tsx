@@ -52,10 +52,12 @@ export function GlobalTimerOverlay() {
     const { timer, tickTimer, pauseTimer, resumeTimer, stopTimer, toggleTimerMinimized, activeTheme } = useAppStore();
     const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight });
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const pipShellRef = useRef<HTMLDivElement>(null);
     const smoothedLitCountRef = useRef(0);
     const [isPictureInPictureOpen, setIsPictureInPictureOpen] = useState(false);
     const [sessionQuote, setSessionQuote] = useState<string | null>(null);
     const [isHovered, setIsHovered] = useState(false);
+    const [pipViewport, setPipViewport] = useState({ w: 460, h: 680 });
     const pictureInPictureBridgeRef = useRef<TaskPanelPictureInPictureBridgeHandle>(null);
     const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
 
@@ -113,6 +115,12 @@ export function GlobalTimerOverlay() {
     const isDesktop = dims.w >= 768;
     const isBottomBar = isMinimized && !isDesktop;
     const isRightBar = isMinimized && isDesktop;
+    const isShelfCompact = !isMinimized && (dims.w < 980 || dims.h < 680);
+    const isShelfCollapsed = !isMinimized && (dims.w < 760 || dims.h < 560);
+    const fullClockScale = isShelfCollapsed ? 0.72 : (isShelfCompact ? 0.86 : 1);
+    const isPipCompact = pipViewport.w < 430 || pipViewport.h < 540;
+    const isPipCollapsed = pipViewport.w < 360 || pipViewport.h < 430;
+    const pipClockScale = isPipCollapsed ? 0.4 : (isPipCompact ? 0.46 : 0.52);
 
     const actualDotGap = isMinimized ? 12 : DOT_GAP;
 
@@ -151,6 +159,22 @@ export function GlobalTimerOverlay() {
         document.documentElement.style.setProperty('--timer-bar-width', isRightBar ? '200px' : '0px');
         return () => { document.documentElement.style.setProperty('--timer-bar-width', '0px'); };
     }, [isRightBar]);
+
+    useEffect(() => {
+        const shell = pipShellRef.current;
+        if (!shell) return;
+
+        const measure = () => {
+            const rect = shell.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            setPipViewport({ w: rect.width, h: rect.height });
+        };
+        measure();
+
+        const observer = new ResizeObserver(measure);
+        observer.observe(shell);
+        return () => observer.disconnect();
+    }, [isPictureInPictureOpen]);
 
     // Canvas effect for dots
     useEffect(() => {
@@ -417,18 +441,23 @@ export function GlobalTimerOverlay() {
                 onOpenChange={setIsPictureInPictureOpen}
             >
                 <div style={{
+                    position: 'relative',
                     width: '100%',
                     height: '100%',
                     background: 'var(--app-bg)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 24,
+                    justifyContent: 'space-between',
+                    padding: isPipCollapsed ? '8px 10px 10px' : (isPipCompact ? '10px 12px 12px' : '12px 14px 14px'),
                     overflow: 'hidden',
-                }}>
-                    {ClockView({ sizeScale: 0.5 })}
-                    <div style={{ marginTop: 40 }}>
+                }}
+                    ref={pipShellRef}
+                >
+                    <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {ClockView({ sizeScale: pipClockScale })}
+                    </div>
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginTop: isPipCollapsed ? 6 : 10 }}>
                         <TimerHUD
                             isDanger={isDanger}
                             paused={timer.paused}
@@ -440,6 +469,9 @@ export function GlobalTimerOverlay() {
                             isPIP={true}
                             pipSupported={isPictureInPictureSupported}
                             shortcutsEnabled={false}
+                            shelfMode={true}
+                            isCompact={isPipCompact}
+                            isCollapsed={isPipCollapsed}
                         />
                     </div>
                 </div>
@@ -524,7 +556,7 @@ export function GlobalTimerOverlay() {
                             alignItems: 'center',
                             justifyContent: isBottomBar ? 'flex-end' : (isRightBar ? 'flex-end' : 'center'),
                             paddingRight: isBottomBar ? 32 : 0,
-                            paddingBottom: isRightBar ? 56 : 0,
+                            paddingBottom: isMinimized ? (isRightBar ? 56 : 0) : (isShelfCollapsed ? 94 : (isShelfCompact ? 110 : 126)),
                             zIndex: 10,
                         }}>
                             {/* Shared relative wrapper to perfectly center the HUD over the Clock when minimized */}
@@ -540,7 +572,7 @@ export function GlobalTimerOverlay() {
                                     transition: 'opacity 0.2s ease-in-out',
                                     pointerEvents: 'none'
                                 }}>
-                                    {ClockView({ sizeScale: isBottomBar ? 0.55 : (isRightBar ? 0.42 : 1), isRow: isBottomBar })}
+                                    {ClockView({ sizeScale: isBottomBar ? 0.55 : (isRightBar ? 0.52 : fullClockScale), isRow: isBottomBar })}
                                 </div>
 
                                 {/* Minimized Centered Controls HUD */}
@@ -574,18 +606,21 @@ export function GlobalTimerOverlay() {
                             </div>
                         </div>
 
-                        {/* 4. Fullscreen Controls HUD (Floating corner) */}
+                        {/* 4. Fullscreen Controls HUD (Centered footer shelf) */}
                         {!isMinimized && (
                             <div
                                 style={{
                                     position: 'absolute',
-                                    bottom: 48,
-                                    right: 48,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    bottom: isShelfCollapsed ? 12 : (isShelfCompact ? 18 : 24),
+                                    width: 'min(calc(100% - 20px), 660px)',
                                     display: 'flex',
                                     alignItems: 'center',
+                                    justifyContent: 'center',
                                     zIndex: 20,
                                     pointerEvents: 'auto',
-                                    transition: 'all 0.4s ease',
+                                    transition: 'all 0.3s ease',
                                 }}
                             >
                                 <TimerHUD
@@ -598,7 +633,10 @@ export function GlobalTimerOverlay() {
                                     isMinimized={false}
                                     isPIP={false}
                                     pipSupported={isPictureInPictureSupported}
-                                    shortcutsEnabled={true}
+                                    shortcutsEnabled={!isShelfCollapsed}
+                                    shelfMode={true}
+                                    isCompact={isShelfCompact}
+                                    isCollapsed={isShelfCollapsed}
                                 />
                             </div>
                         )}
@@ -620,6 +658,9 @@ function TimerHUD({
     isPIP,
     pipSupported,
     shortcutsEnabled,
+    shelfMode = false,
+    isCompact = false,
+    isCollapsed = false,
 }: {
     isDanger: boolean;
     paused: boolean;
@@ -631,25 +672,36 @@ function TimerHUD({
     isPIP: boolean;
     pipSupported: boolean;
     shortcutsEnabled: boolean;
+    shelfMode?: boolean;
+    isCompact?: boolean;
+    isCollapsed?: boolean;
 }) {
+    const compact = Boolean(isMinimized || isCompact);
+    const collapsed = Boolean(isMinimized || isCollapsed);
+    const shouldShowLabels = !compact && !collapsed;
+    const buttonSize = compact ? 38 : 44;
+
     return (
         <div style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'stretch',
-            gap: 8,
-            background: isMinimized ? 'transparent' : 'rgba(10, 14, 20, 0.72)',
-            backdropFilter: isMinimized ? 'none' : 'blur(40px)',
-            border: isMinimized ? 'none' : '1px solid rgba(255,255,255,0.1)',
-            borderRadius: isMinimized ? 0 : 24,
-            padding: isMinimized ? '0' : '10px 12px',
-            boxShadow: isMinimized ? 'none' : '0 25px 50px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.3)',
+            gap: compact ? 6 : 8,
+            background: isMinimized ? 'transparent' : 'rgba(10, 14, 20, 0.76)',
+            backdropFilter: isMinimized ? 'none' : 'blur(36px)',
+            border: isMinimized ? 'none' : '1px solid rgba(255,255,255,0.12)',
+            borderRadius: isMinimized ? 0 : (compact ? 18 : 24),
+            padding: isMinimized ? '0' : (compact ? '8px 10px' : '10px 12px'),
+            boxShadow: isMinimized ? 'none' : (shelfMode
+                ? '0 16px 32px rgba(0,0,0,0.38), inset 0 0 16px rgba(0,0,0,0.22)'
+                : '0 25px 50px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.3)'),
         }}>
             <div style={{
                 display: isMinimized ? 'grid' : 'flex',
                 gridTemplateColumns: isMinimized ? '1fr 1fr' : undefined,
                 alignItems: 'center',
-                gap: isMinimized ? 6 : 10
+                justifyContent: 'center',
+                gap: compact ? 8 : 10
             }}>
                 {/* Pause/Resume Button */}
                 <motion.button
@@ -658,13 +710,13 @@ function TimerHUD({
                     whileTap={{ scale: 0.97 }}
                     onClick={onPauseResume}
                     style={{
-                        background: paused ? 'var(--accent)' : (isMinimized ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)'),
+                        background: paused ? 'var(--accent)' : (compact ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)'),
                         border: '1px solid rgba(255,255,255,0.12)',
                         color: paused ? 'var(--accent-contrast)' : 'rgba(255,255,255,0.9)',
-                        height: isMinimized ? 38 : 44,
-                        width: isMinimized ? 38 : 'auto',
+                        height: buttonSize,
+                        width: compact ? buttonSize : 'auto',
                         borderRadius: 12,
-                        padding: isMinimized ? 0 : '0 18px',
+                        padding: compact ? 0 : '0 18px',
                         fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
@@ -678,8 +730,8 @@ function TimerHUD({
                     }}
                     title={paused ? 'Resume (Space)' : 'Pause (Space)'}
                 >
-                    {paused ? <Play size={isMinimized ? 16 : 18} fill="currentColor" /> : <Pause size={isMinimized ? 16 : 18} fill="currentColor" />}
-                    {!isMinimized && (paused ? 'Resume' : 'Pause')}
+                    {paused ? <Play size={compact ? 16 : 18} fill="currentColor" /> : <Pause size={compact ? 16 : 18} fill="currentColor" />}
+                    {shouldShowLabels && (paused ? 'Resume' : 'Pause')}
                 </motion.button>
 
                 {/* PiP Button — always rendered, disabled on non-HTTPS */}
@@ -690,11 +742,11 @@ function TimerHUD({
                     onClick={pipSupported ? onTogglePIP : undefined}
                     disabled={!pipSupported}
                     style={{
-                        background: isMinimized ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
+                        background: compact ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
                         border: '1px solid rgba(255,255,255,0.12)',
                         color: pipSupported ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)',
-                        width: isMinimized ? 38 : 44,
-                        height: isMinimized ? 38 : 44,
+                        width: buttonSize,
+                        height: buttonSize,
                         borderRadius: 12,
                         display: 'flex',
                         alignItems: 'center',
@@ -707,7 +759,7 @@ function TimerHUD({
                         ? (isPIP ? 'Return to Fullscreen (P)' : 'Pop Out · Always on Top (P)')
                         : 'Picture-in-Picture requires HTTPS'}
                 >
-                    <PictureInPicture2 size={isMinimized ? 16 : 18} strokeWidth={2.2} />
+                    <PictureInPicture2 size={compact ? 16 : 18} strokeWidth={2.2} />
                 </motion.button>
 
                 {/* Minimize Button */}
@@ -718,11 +770,11 @@ function TimerHUD({
                         whileTap={{ scale: 0.94 }}
                         onClick={onToggleMinimize}
                         style={{
-                            background: isMinimized ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
+                            background: compact ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)',
                             border: '1px solid rgba(255,255,255,0.12)',
                             color: 'rgba(255,255,255,0.85)',
-                            width: isMinimized ? 38 : 44,
-                            height: isMinimized ? 38 : 44,
+                            width: buttonSize,
+                            height: buttonSize,
                             borderRadius: 12,
                             display: 'flex',
                             alignItems: 'center',
@@ -732,7 +784,7 @@ function TimerHUD({
                         }}
                         title={isMinimized ? 'Fullscreen (M)' : 'Minimize (M)'}
                     >
-                        {isMinimized ? <Maximize2 size={16} strokeWidth={2.2} /> : <Minimize2 size={18} strokeWidth={2.2} />}
+                        {isMinimized ? <Maximize2 size={16} strokeWidth={2.2} /> : <Minimize2 size={compact ? 16 : 18} strokeWidth={2.2} />}
                     </motion.button>
                 )}
 
@@ -743,13 +795,13 @@ function TimerHUD({
                     whileTap={{ scale: 0.97 }}
                     onClick={onStop}
                     style={{
-                        background: isDanger ? 'rgba(215, 60, 60, 0.24)' : (isMinimized ? 'rgba(215, 60, 60, 0.1)' : 'rgba(215, 60, 60, 0.15)'),
+                        background: isDanger ? 'rgba(215, 60, 60, 0.24)' : (compact ? 'rgba(215, 60, 60, 0.1)' : 'rgba(215, 60, 60, 0.15)'),
                         border: '1px solid rgba(215, 60, 60, 0.3)',
                         color: '#ff8a8a',
-                        height: isMinimized ? 38 : 44,
-                        width: isMinimized ? 38 : 'auto',
+                        height: buttonSize,
+                        width: compact ? buttonSize : 'auto',
                         borderRadius: 12,
-                        padding: isMinimized ? 0 : '0 16px',
+                        padding: compact ? 0 : '0 16px',
                         fontSize: 12,
                         fontWeight: 800,
                         cursor: 'pointer',
@@ -764,10 +816,10 @@ function TimerHUD({
                     title='Stop timer (Esc)'
                 >
                     <Square size={14} fill="currentColor" />
-                    {!isMinimized && 'Stop'}
+                    {shouldShowLabels && 'Stop'}
                 </motion.button>
             </div>
-            {shortcutsEnabled && (
+            {shortcutsEnabled && !compact && !collapsed && (
                 <div style={{
                     fontSize: 10,
                     fontWeight: 700,

@@ -97,6 +97,7 @@ export const TaskModal: React.FC<{
   return (
     <div
       className={`fixed inset-0 z-[2100] flex justify-end transition-opacity ${isDraggingSubtask ? 'bg-transparent backdrop-blur-0 pointer-events-none' : 'bg-[var(--overlay)] backdrop-blur-[2px]'}`}
+      style={{ paddingRight: 'var(--timer-bar-width, 0px)' }}
       onClick={onClose}
     >
       <div

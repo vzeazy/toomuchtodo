@@ -148,7 +148,7 @@ export const TaskPanelWrapper: React.FC<{
         groupDayViewByPart={Boolean(settings.groupDayViewByPart)}
         backLabel={panel.view === 'day' ? 'Back to week' : undefined}
         onExpandTask={setExpandedTaskId}
-        onAddTask={(title, dayPart) => addTask(title, isDayLikeView ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, isDayLikeView ? (panel.view === 'today' ? todayDateStr : panel.dateStr) : null, false, null, isDayLikeView ? (dayPart || 'morning') : null)}
+        onAddTask={(title, dayPart) => addTask(title, isDayLikeView ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, isDayLikeView ? (panel.view === 'today' ? todayDateStr : panel.dateStr) : null, false, null, isDayLikeView ? (dayPart ?? null) : null)}
         onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : (parentTask.projectId ? 'open' : 'next')) : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
         onTaskListModeChange={setTaskListMode}
         onToggleStar={toggleStar}
