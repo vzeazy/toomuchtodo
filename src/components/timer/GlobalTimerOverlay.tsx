@@ -68,7 +68,7 @@ export function GlobalTimerOverlay() {
         return () => clearInterval(id);
     }, [timer.active, timer.paused, tickTimer]);
 
-    const [mainRect, setMainRect] = useState({ left: 0, width: typeof window !== 'undefined' ? window.innerWidth : 1000 });
+    const [mainRect, setMainRect] = useState({ left: 0, top: 0, width: typeof window !== 'undefined' ? window.innerWidth : 1000, height: typeof window !== 'undefined' ? window.innerHeight : 1000 });
 
     // Track viewport
     useEffect(() => {
@@ -79,7 +79,7 @@ export function GlobalTimerOverlay() {
             const mainEl = document.querySelector('main');
             if (mainEl) {
                 const rect = mainEl.getBoundingClientRect();
-                setMainRect({ left: rect.left, width: rect.width });
+                setMainRect({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
             }
         };
         measureMain();
@@ -109,13 +109,15 @@ export function GlobalTimerOverlay() {
         setSessionQuote((current) => current ?? motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)] ?? null);
     }, [timer.active, timer.linkedTaskId, timer.sessionTitle]);
 
-    const isMinimized = timer.minimized;
+    const isDesktop = dims.w >= 768;
+    const isBottomBar = isMinimized && !isDesktop;
+    const isRightBar = isMinimized && isDesktop;
 
     const actualDotGap = isMinimized ? 12 : DOT_GAP;
 
     // Grid bounded to either fullscreen or minimized box size
-    const targetW = isMinimized ? mainRect.width : dims.w;
-    const targetH = isMinimized ? 96 : dims.h;
+    const targetW = isBottomBar ? mainRect.width : (isRightBar ? 96 : dims.w);
+    const targetH = isBottomBar ? 96 : (isRightBar ? mainRect.height : dims.h);
 
     // When minimized, we want rows to fit height, cols to fit width
     const cols = Math.ceil(targetW / actualDotGap);
@@ -195,10 +197,10 @@ export function GlobalTimerOverlay() {
             const safeDrawCount = Math.min(total, drawCount);
 
             for (let i = 0; i < safeDrawCount; i++) {
-                // If minimized, fill vertically (column by column)
-                // If fullscreen, fill horizontally (row by row)
-                const col = isMinimized ? Math.floor(i / rows) : i % cols;
-                const row = isMinimized ? i % rows : Math.floor(i / cols);
+                // If bottom bar, fill vertically (column by column)
+                // If fullscreen or right bar, fill horizontally (row by row)
+                const col = isBottomBar ? Math.floor(i / rows) : i % cols;
+                const row = isBottomBar ? i % rows : Math.floor(i / cols);
                 const x = offsetX + col * actualDotGap + (actualDotGap - DOT_D) / 2;
                 const y = offsetY + row * actualDotGap + (actualDotGap - DOT_D) / 2;
 
@@ -441,7 +443,7 @@ export function GlobalTimerOverlay() {
                         animate={{
                             opacity: 1,
                             scale: 1,
-                            ...(isMinimized ? {
+                            ...(isBottomBar ? {
                                 top: 'auto',
                                 bottom: 0,
                                 left: mainRect.left,
@@ -449,6 +451,14 @@ export function GlobalTimerOverlay() {
                                 height: 96,
                                 borderRadius: 0,
                                 boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
+                            } : isRightBar ? {
+                                top: mainRect.top,
+                                bottom: 'auto',
+                                left: mainRect.left + mainRect.width - 96,
+                                width: 96,
+                                height: mainRect.height,
+                                borderRadius: 0,
+                                boxShadow: '-10px 0 40px rgba(0,0,0,0.5)',
                             } : {
                                 top: 0,
                                 bottom: 0,
@@ -480,8 +490,8 @@ export function GlobalTimerOverlay() {
                         {/* 2. Timer Matrix (Canvas) */}
                         <canvas
                             ref={canvasRef}
-                            width={isMinimized ? mainRect.width : dims.w}
-                            height={isMinimized ? 112 : dims.h}
+                            width={targetW}
+                            height={targetH}
                             style={{
                                 position: 'absolute',
                                 top: isMinimized ? 0 : '50%',
@@ -497,10 +507,11 @@ export function GlobalTimerOverlay() {
                             position: 'absolute',
                             inset: 0,
                             display: 'flex',
-                            flexDirection: 'row',
+                            flexDirection: isRightBar ? 'column' : 'row',
                             alignItems: 'center',
                             justifyContent: isMinimized ? 'flex-end' : 'center',
-                            paddingRight: isMinimized ? 32 : 0,
+                            paddingRight: isBottomBar ? 32 : 0,
+                            paddingBottom: isRightBar ? 32 : 0,
                             zIndex: 10,
                         }}>
                             {/* Shared relative wrapper to perfectly center the HUD over the Clock when minimized */}
@@ -516,7 +527,7 @@ export function GlobalTimerOverlay() {
                                     transition: 'opacity 0.2s ease-in-out',
                                     pointerEvents: 'none'
                                 }}>
-                                    {ClockView({ sizeScale: isMinimized ? 0.55 : 1, isRow: isMinimized })}
+                                    {ClockView({ sizeScale: isBottomBar ? 0.55 : (isRightBar ? 0.21 : 1), isRow: isBottomBar })}
                                 </div>
 
                                 {/* Minimized Centered Controls HUD */}
