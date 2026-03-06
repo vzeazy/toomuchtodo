@@ -117,8 +117,9 @@ export function GlobalTimerOverlay() {
     const actualDotGap = isMinimized ? 12 : DOT_GAP;
 
     // Grid bounded to either fullscreen or minimized box size
-    const targetW = isBottomBar ? mainRect.width : (isRightBar ? 96 : dims.w);
-    const targetH = isBottomBar ? 96 : (isRightBar ? mainRect.height : dims.h);
+    const RIGHT_BAR_W = 200;
+    const targetW = isBottomBar ? mainRect.width : (isRightBar ? RIGHT_BAR_W : dims.w);
+    const targetH = isBottomBar ? 96 : dims.h;
 
     // When minimized, we want rows to fit height, cols to fit width
     const cols = Math.ceil(targetW / actualDotGap);
@@ -144,6 +145,12 @@ export function GlobalTimerOverlay() {
         : `${mm}:${ss.toString().padStart(2, '0')}`;
 
     const accentColor = isDanger ? 'var(--danger)' : 'var(--accent)';
+
+    // Push layout via CSS var so <main> can shrink-in
+    useEffect(() => {
+        document.documentElement.style.setProperty('--timer-bar-width', isRightBar ? '200px' : '0px');
+        return () => { document.documentElement.style.setProperty('--timer-bar-width', '0px'); };
+    }, [isRightBar]);
 
     // Canvas effect for dots
     useEffect(() => {
@@ -176,8 +183,11 @@ export function GlobalTimerOverlay() {
             }
             const drawCount = Math.floor(smoothedLitCountRef.current);
 
-            // Global pulse for breathing - toned down the aggressive flashing
-            const pulseAmount = isMinimized ? 0 : (timer.finished ? 0.15 * Math.sin(time / 400) : 0.05 * Math.sin(time / 800));
+            // Global pulse for breathing
+            // Full: rich. Minimized bars: very gentle so it doesn't distract
+            const miniPulse = timer.finished ? 0.06 * Math.sin(time / 600) : 0.03 * Math.sin(time / 1000);
+            const fullPulse = timer.finished ? 0.15 * Math.sin(time / 400) : 0.05 * Math.sin(time / 800);
+            const pulseAmount = isMinimized ? miniPulse : fullPulse;
             const globalPulse = (timer.finished ? 0.8 : 0.95) + pulseAmount;
 
             // Use bands for performance
@@ -211,11 +221,11 @@ export function GlobalTimerOverlay() {
                 const dy = y - cy;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
-                // A slow, gentle radial wave that breathes outward
-                const wave = isMinimized ? 0 : Math.sin(dist / 120 - time / 1000);
+                // A slow, gentle radial wave - reduced amplitude in minimized bars
+                const wave = Math.sin(dist / (isMinimized ? 30 : 120) - time / (isMinimized ? 2500 : 1000)) * (isMinimized ? 0.3 : 1);
 
-                // Add a gentle diagonal sweep to make it feel like "passage of time"
-                const sweep = isMinimized ? 0 : Math.sin((x + y) / 200 + time / 1500);
+                // Add a gentle diagonal sweep
+                const sweep = Math.sin((x + y) / (isMinimized ? 80 : 200) + time / (isMinimized ? 4000 : 1500)) * (isMinimized ? 0.3 : 1);
 
                 // Combine them for an organic topographic feel
                 const heat = (wave + sweep) * 0.5;
@@ -226,19 +236,19 @@ export function GlobalTimerOverlay() {
                 // Highlight the "leading edge" of the timer dots
                 const distFromFront = drawCount - i;
                 if (!timer.paused && !timer.finished && distFromFront < cols * 2) {
-                    intensity = Math.max(intensity, isMinimized ? 0.45 : 0.8 + 0.2 * Math.sin(time / 200 + col * 0.1));
+                    intensity = Math.max(intensity, isMinimized ? 0.55 : 0.8 + 0.2 * Math.sin(time / 200 + col * 0.1));
                 }
 
                 if (timer.paused && !timer.finished) {
-                    intensity = isMinimized ? 0.25 : 0.2 + ((heat + 1) / 2) * 0.3; // Dim down when paused, still breathing
+                    intensity = 0.2 + ((heat + 1) / 2) * (isMinimized ? 0.2 : 0.3); // Dim down when paused, still breathing
                 }
 
                 const bandIndex = Math.min(bands - 1, Math.floor(clamp01(intensity) * bands));
 
                 // Slightly vary size based on the breathing wave for extra tactility
                 const sizeOffset = isMinimized || timer.paused ? 0 : heat * 0.5;
-                const baseIdleD = isMinimized ? 4.5 : DOT_D_IDLE;
-                const baseD = isMinimized ? 5.5 : DOT_D;
+                const baseIdleD = isMinimized ? 5 : DOT_D_IDLE;
+                const baseD = isMinimized ? 6.5 : DOT_D;
                 const drawSize = (timer.paused && !timer.finished ? baseIdleD : baseD) + sizeOffset;
 
                 paths[bandIndex].rect(x - sizeOffset / 2, y - sizeOffset / 2, drawSize, drawSize);
@@ -453,12 +463,14 @@ export function GlobalTimerOverlay() {
                                 borderRadius: 0,
                                 boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
                             } : isRightBar ? {
-                                top: mainRect.top,
-                                bottom: 'auto',
-                                left: mainRect.left + mainRect.width - 96,
-                                width: 96,
-                                height: mainRect.height,
+                                top: 0,
+                                bottom: 0,
+                                right: 0,
+                                left: 'auto',
+                                width: 200,
+                                height: '100vh',
                                 borderRadius: 0,
+                                borderLeft: '1px solid rgba(255,255,255,0.06)',
                                 boxShadow: '-10px 0 40px rgba(0,0,0,0.5)',
                             } : {
                                 top: 0,
@@ -510,9 +522,9 @@ export function GlobalTimerOverlay() {
                             display: 'flex',
                             flexDirection: isRightBar ? 'column' : 'row',
                             alignItems: 'center',
-                            justifyContent: isMinimized ? 'flex-end' : 'center',
+                            justifyContent: isBottomBar ? 'flex-end' : (isRightBar ? 'flex-end' : 'center'),
                             paddingRight: isBottomBar ? 32 : 0,
-                            paddingBottom: isRightBar ? 32 : 0,
+                            paddingBottom: isRightBar ? 56 : 0,
                             zIndex: 10,
                         }}>
                             {/* Shared relative wrapper to perfectly center the HUD over the Clock when minimized */}
@@ -528,7 +540,7 @@ export function GlobalTimerOverlay() {
                                     transition: 'opacity 0.2s ease-in-out',
                                     pointerEvents: 'none'
                                 }}>
-                                    {ClockView({ sizeScale: isBottomBar ? 0.55 : (isRightBar ? 0.21 : 1), isRow: isBottomBar })}
+                                    {ClockView({ sizeScale: isBottomBar ? 0.55 : (isRightBar ? 0.42 : 1), isRow: isBottomBar })}
                                 </div>
 
                                 {/* Minimized Centered Controls HUD */}

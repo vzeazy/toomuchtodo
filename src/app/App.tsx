@@ -763,7 +763,7 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="flex-1 relative flex flex-col min-w-0">
+        <main className="flex-1 relative flex flex-col min-w-0" style={{ paddingRight: 'var(--timer-bar-width, 0px)', transition: 'padding-right 0.4s cubic-bezier(0.16,1,0.3,1)' }}>
           <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
             {currentView === 'planner' && (
               <PlannerView
