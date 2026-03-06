@@ -109,6 +109,7 @@ export function GlobalTimerOverlay() {
         setSessionQuote((current) => current ?? motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)] ?? null);
     }, [timer.active, timer.linkedTaskId, timer.sessionTitle]);
 
+    const isMinimized = timer.minimized;
     const isDesktop = dims.w >= 768;
     const isBottomBar = isMinimized && !isDesktop;
     const isRightBar = isMinimized && isDesktop;
