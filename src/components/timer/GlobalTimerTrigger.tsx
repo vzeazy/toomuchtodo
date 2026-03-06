@@ -90,6 +90,7 @@ export function GlobalTimerTrigger() {
     const [dragDuration, setDragDuration] = useState(1800); // default 30m
     const [isDragging, setIsDragging] = useState(false);
     const [isCanceling, setIsCanceling] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
     const trackRef = useRef<HTMLDivElement>(null);
 
     // Progress and pixel position of the grabber inside the track div
@@ -176,11 +177,13 @@ export function GlobalTimerTrigger() {
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerUp}
+                onPointerEnter={() => setIsHovered(true)}
+                onPointerLeave={() => setIsHovered(false)}
                 style={{
                     position: 'fixed',
                     top: `calc(50vh - ${TRACK_H / 2}px)`,
                     right: 0,
-                    width: isDragging ? 72 : 28,
+                    width: isDragging ? 100 : (isHovered ? 32 : 24),
                     height: TRACK_H,
                     zIndex: 9500,
                     cursor: isDragging ? 'ns-resize' : 'grab',
@@ -203,7 +206,7 @@ export function GlobalTimerTrigger() {
                                 top: 0,
                                 bottom: 0,
                                 width: 1,
-                                background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.06) 15%, rgba(255,255,255,0.06) 85%, transparent)',
+                                background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.08) 15%, rgba(255,255,255,0.08) 85%, transparent)',
                             }}
                         />
                     )}
@@ -236,7 +239,7 @@ export function GlobalTimerTrigger() {
                                 transition={{ delay: 0.03, duration: 0.12 }}
                                 style={{
                                     position: 'absolute',
-                                    right: 4, // Pad from edge
+                                    right: 16, // Pad from edge
                                     top: tickTop,
                                     pointerEvents: 'none',
                                 }}
@@ -288,11 +291,10 @@ export function GlobalTimerTrigger() {
                 </AnimatePresence>
 
                 {/* ── Grabber ────────────────────────────────────────────── */}
-                {/* Outer div owns vertical positioning (top directly tracked, no flexbox tricks). */}
                 <div
                     style={{
                         position: 'absolute',
-                        right: 4, // Match ticks right padding
+                        right: 0,
                         top: isDragging ? grabberTop : TRACK_H / 2,
                         pointerEvents: 'none',
                         transition: isDragging
@@ -300,49 +302,40 @@ export function GlobalTimerTrigger() {
                             : 'top 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
                     }}
                 >
-                    {/* Tail */}
                     <motion.div
                         animate={{
-                            width: isDragging ? 32 : 16,
-                            opacity: isDragging ? 0.9 : 0.4,
-                        }}
-                        transition={{ duration: 0.15 }}
-                        style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            transform: 'translateY(-50%)',
-                            height: 2.5,
-                            borderRadius: 99,
-                            background: isCanceling ? 'var(--danger)' : accentColor,
-                            transition: 'background 0.2s',
-                        }}
-                    />
-                    {/* Circle head */}
-                    <motion.div
-                        animate={{
-                            width: isDragging ? 32 : 24,
-                            height: isDragging ? 32 : 24,
-                            right: isDragging ? 32 : 16, // Pins circle exactly at left edge of the tail
+                            width: isDragging ? 44 : (isHovered ? 32 : 24),
+                            height: isDragging ? 44 : (isHovered ? 68 : 56),
+                            borderRadius: isDragging ? '22px' : '14px 0 0 14px',
+                            right: isDragging ? 52 : 0,
+                            background: isDragging
+                                ? (isCanceling ? 'var(--danger)' : accentColor)
+                                : (isHovered ? 'rgba(40,40,40,0.85)' : 'rgba(20,20,20,0.6)'),
+                            border: isDragging
+                                ? '1px solid transparent'
+                                : `1px solid rgba(255,255,255,${isHovered ? 0.15 : 0.06})`,
+                            borderRightWidth: 0,
                             boxShadow: isDragging
-                                ? `0 0 14px ${isCanceling ? 'var(--danger)' : accentColor}, 0 0 34px ${isCanceling ? 'var(--danger)' : accentColor}55`
-                                : '0 1px 6px rgba(0,0,0,0.4)',
+                                ? `0 0 24px ${isCanceling ? 'var(--danger)' : accentColor}60`
+                                : `0 4px 12px rgba(0,0,0,0.${isHovered ? 4 : 2})`,
+                            color: isDragging
+                                ? 'var(--app-bg, #000)'
+                                : (isHovered ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.4)'),
                         }}
-                        transition={{ duration: 0.15 }}
+                        transition={{
+                            duration: 0.2, // Smooth layout animations
+                        }}
                         style={{
                             position: 'absolute',
                             top: 0,
                             transform: 'translateY(-50%)',
-                            borderRadius: '50%',
-                            background: isCanceling ? 'var(--danger)' : accentColor,
-                            transition: 'background 0.2s',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: 'var(--app-bg)' // Use app background for high contrast against accent
+                            backdropFilter: 'blur(16px)',
                         }}
                     >
-                        <TimerIcon size={isDragging ? 16 : 12} strokeWidth={3} />
+                        <TimerIcon size={isDragging ? 20 : (isHovered ? 16 : 14)} strokeWidth={isDragging ? 2.5 : 2} style={{ transition: 'all 0.2s' }} />
                     </motion.div>
                 </div>
             </div>
@@ -367,7 +360,7 @@ export function GlobalTimerTrigger() {
                         }}
                         style={{
                             position: 'fixed',
-                            right: 84,
+                            right: 120,
                             zIndex: 9600,
                             pointerEvents: 'none',
                         }}

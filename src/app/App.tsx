@@ -430,8 +430,8 @@ export default function App() {
         />
       )}
 
-      <header className="topbar-shell z-[100] shrink-0 border-b soft-divider px-3 py-3 sm:flex sm:h-14 sm:items-center sm:justify-between sm:px-5 sm:py-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-4">
+      <header className="topbar-shell z-[100] shrink-0 border-b soft-divider px-3 py-3 lg:flex lg:h-14 lg:items-center lg:justify-between lg:px-5 lg:py-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap lg:gap-4">
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
@@ -441,19 +441,19 @@ export default function App() {
           >
             {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
-          <div className="min-w-0 items-baseline gap-3 sm:flex">
+          <div className="min-w-0 items-baseline gap-3 lg:flex">
             <div className="text-[14px] font-bold uppercase tracking-[0.14em] text-[var(--text-primary)]">Too Much Todo</div>
           </div>
           <button
             type="button"
             onClick={() => setShowMobileToolbarMenu((prev) => !prev)}
-            className="panel-muted ml-auto flex h-9 w-9 items-center justify-center rounded-xl border soft-divider text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] sm:hidden"
+            className="panel-muted ml-auto flex h-9 w-9 items-center justify-center rounded-xl border soft-divider text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] lg:hidden"
             title="More controls"
             aria-label="More controls"
           >
             <MoreHorizontal size={16} />
           </button>
-          <div className="order-3 flex w-full items-center gap-2 text-[var(--text-muted)] sm:order-none sm:ml-4 sm:w-auto">
+          <div className="order-3 flex w-full items-center gap-2 text-[var(--text-muted)] lg:order-none lg:ml-4 lg:w-auto">
             <ChevronLeft
               className={`cursor-pointer ${(currentView === 'planner' || currentView === 'day') ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`}
               size={14}
@@ -472,16 +472,16 @@ export default function App() {
             />
             {currentWeekOffset !== 0 && currentView === 'planner' && <button type="button" onClick={() => setCurrentWeekOffset(0)} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
             {currentView === 'day' && <button type="button" onClick={() => setSelectedPlannerDate(formatDateKey(new Date()))} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
-            {currentView === 'planner' && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] sm:ml-3">{weekRangeLabel}</span>}
-            {currentView === 'day' && selectedDayLabel && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] sm:ml-3">{selectedDayLabel}</span>}
+            {currentView === 'planner' && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] lg:ml-3">{weekRangeLabel}</span>}
+            {currentView === 'day' && selectedDayLabel && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] lg:ml-3">{selectedDayLabel}</span>}
           </div>
-          <div className="relative order-4 hidden w-full sm:order-none sm:ml-4 sm:block sm:w-auto">
-            <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex w-full items-center justify-between gap-1 rounded-full border soft-divider px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] sm:w-auto sm:justify-start">
+          <div className="relative order-4 hidden w-full lg:order-none lg:ml-4 lg:block lg:w-auto">
+            <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex w-full items-center justify-between gap-1 rounded-full border soft-divider px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] lg:w-auto lg:justify-start">
               <span className="font-medium">{selectedArea || 'All Areas'}</span>
               <ChevronDown size={14} />
             </button>
             {showAreaMenu && (
-              <div className="panel-surface absolute left-0 right-0 top-10 z-50 rounded-2xl py-1 sm:right-auto sm:w-44">
+              <div className="panel-surface absolute left-0 right-0 top-10 z-50 rounded-2xl py-1 lg:right-auto lg:w-44">
                 <button type="button" onClick={() => { setSelectedArea(null); setShowAreaMenu(false); }} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--panel-bg)]">All Areas {!selectedArea && <span className="text-[var(--accent)]">•</span>}</button>
                 <div className="my-1 border-t soft-divider" />
                 {AREAS.map((area) => (
@@ -494,7 +494,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className={`${showMobileToolbarMenu ? 'mt-3 flex' : 'hidden'} flex-wrap items-center gap-2 sm:mt-0 sm:flex sm:h-full sm:justify-end sm:py-1`}>
+        <div className={`${showMobileToolbarMenu ? 'mt-3 flex' : 'hidden'} flex-wrap items-center gap-2 lg:mt-0 lg:flex lg:h-full lg:justify-end lg:py-1`}>
           {/* Group 1: Dynamic Mode Options (Width varies by view) */}
           {currentView === 'planner' && (
             <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
@@ -506,7 +506,7 @@ export default function App() {
                     key={option.id}
                     type="button"
                     onClick={() => setPlannerWidthMode(option.id)}
-                    className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all sm:px-2.5 ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all lg:px-2.5 ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                   >
                     <Icon size={13} />
                     <span className="hidden lg:inline">{option.label}</span>
@@ -527,7 +527,7 @@ export default function App() {
                     key={mode}
                     type="button"
                     onClick={() => setTaskListMode(mode)}
-                    className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all sm:px-2.5 ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all lg:px-2.5 ${isActive ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                   >
                     <Icon size={13} />
                     <span className="hidden lg:inline">{label}</span>
@@ -542,7 +542,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={toggleGroupDayViewByPart}
-                className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all sm:px-2.5 ${settings.groupDayViewByPart ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all lg:px-2.5 ${settings.groupDayViewByPart ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
               >
                 <PanelsTopLeft size={13} />
                 <span className="hidden lg:inline">Blocks</span>
@@ -550,7 +550,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="relative w-full sm:hidden">
+          <div className="relative w-full lg:hidden">
             <button type="button" onClick={() => setShowAreaMenu((prev) => !prev)} className="panel-muted flex w-full items-center justify-between rounded-xl border soft-divider px-3 py-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]">
               <span className="font-medium">{selectedArea || 'All Areas'}</span>
               <ChevronDown size={14} />
@@ -568,7 +568,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] sm:block" />
+          <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] lg:block" />
 
           {/* Group 2: Static View Toggles */}
           <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
@@ -594,7 +594,7 @@ export default function App() {
             <Keyboard size={18} />
           </button>
 
-          <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] sm:block" />
+          <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] lg:block" />
 
           {/* Group 3: New Task Input (Right-most) */}
           <div className="group panel-muted order-last flex w-full items-center rounded-xl border soft-divider p-1 transition-all focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_1px_var(--accent-soft)] lg:order-none lg:w-auto">
