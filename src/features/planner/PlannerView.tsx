@@ -173,7 +173,7 @@ export const PlannerView: React.FC<{
                     />
                   </React.Fragment>
                 ))}
-                <GhostItem placeholder="New action..." onAdd={(title) => onAddTask(title, day.dateStr)} className="mt-2 opacity-40 hover:opacity-100" />
+                <GhostItem placeholder="New action..." onAdd={(title) => onAddTask(title, day.dateStr)} className="mt-2 opacity-40 hover:opacity-100" textSizeClass="text-[12.5px]" />
               </div>
             </div>
           )
@@ -269,7 +269,7 @@ export const PlannerView: React.FC<{
                       onToggleComplete={onToggleComplete}
                     />
                   ))}
-                  <GhostItem placeholder="Add to list..." onAdd={(title) => onAddProjectTask(title, project.id)} className="mt-1 opacity-40" />
+                  <GhostItem placeholder="Add to list..." onAdd={(title) => onAddProjectTask(title, project.id)} className="mt-1 opacity-40" textSizeClass="text-[12.5px]" />
                 </div>
               </div>
             );

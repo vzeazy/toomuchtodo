@@ -632,6 +632,7 @@ export const TaskListView: React.FC<{
                       onArrowNavigate={(direction) => handleGroupedInputNavigation(section.id, direction)}
                       className="mt-2 px-4 py-2 opacity-80 hover:opacity-100"
                       iconSize={14}
+                      textSizeClass="text-[12.5px]"
                     />
                   </div>
                 </section>
@@ -738,6 +739,7 @@ export const TaskListView: React.FC<{
                       onArrowNavigate={(direction) => handleGroupedInputNavigation(section.id, direction)}
                       className="mt-2 px-4 py-2 opacity-80 hover:opacity-100"
                       iconSize={14}
+                      textSizeClass="text-[12.5px]"
                     />
                   </div>
                 </section>

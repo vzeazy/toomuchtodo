@@ -6,9 +6,10 @@ export const GhostItem: React.FC<{
   onAdd: (title: string, indentMode?: 'indent' | 'none') => void;
   className?: string;
   iconSize?: number;
+  textSizeClass?: string;
   inputRef?: (element: HTMLInputElement | null) => void;
   onArrowNavigate?: (direction: 'up' | 'down') => void;
-}> = ({ placeholder, onAdd, className = '', iconSize = 14, inputRef, onArrowNavigate }) => {
+}> = ({ placeholder, onAdd, className = '', iconSize = 14, textSizeClass = 'text-[13px]', inputRef, onArrowNavigate }) => {
   const [value, setValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [indentMode, setIndentMode] = useState<'indent' | 'none'>('none');
@@ -40,7 +41,7 @@ export const GhostItem: React.FC<{
         onBlur={() => setIsFocused(false)}
         ref={inputRef}
         placeholder={placeholder}
-        className={`w-full border-none bg-transparent text-[13px] outline-none transition-all placeholder:font-normal ${isFocused ? 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' : 'cursor-pointer text-[var(--text-primary)]/90 placeholder:text-[var(--text-muted)]'}`}
+        className={`w-full border-none bg-transparent ${textSizeClass} outline-none transition-all placeholder:font-normal ${isFocused ? 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' : 'cursor-pointer text-[var(--text-primary)]/90 placeholder:text-[var(--text-muted)]'}`}
       />
     </div>
   );
