@@ -41,7 +41,7 @@ export const GhostItem: React.FC<{
         onBlur={() => setIsFocused(false)}
         ref={inputRef}
         placeholder={placeholder}
-        className={`w-full border-none bg-transparent ${textSizeClass} outline-none transition-all placeholder:font-normal ${isFocused ? 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' : 'cursor-pointer text-[var(--text-primary)]/90 placeholder:text-[var(--text-muted)]'}`}
+        className={`w-full border-none bg-transparent p-0 font-medium tracking-[-0.01em] ${textSizeClass} outline-none transition-all placeholder:font-normal focus:ring-0 ${isFocused ? 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' : 'cursor-pointer text-[var(--text-primary)]/90 placeholder:text-[var(--text-muted)]'}`}
       />
     </div>
   );
