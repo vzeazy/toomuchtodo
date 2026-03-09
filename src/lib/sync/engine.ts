@@ -2,6 +2,22 @@ import { ApiError } from './http';
 import { syncApi } from './client';
 import { AppStateData, Project, SyncConflict, SyncDiagnostics, SyncMeta, SyncOperation, Task } from '../../types';
 
+const mergeByIdPreferLocal = <T extends { id: string }>(localRecords: T[], remoteRecords: T[]) => {
+  const merged = new Map(remoteRecords.map((record) => [record.id, record]));
+  for (const record of localRecords) merged.set(record.id, record);
+  return Array.from(merged.values());
+};
+
+export const mergeFirstLinkState = (
+  localState: AppStateData,
+  remoteSnapshot: Pick<AppStateData, 'tasks' | 'projects' | 'settings'>,
+) => ({
+  ...localState,
+  tasks: mergeByIdPreferLocal(localState.tasks, remoteSnapshot.tasks),
+  projects: mergeByIdPreferLocal(localState.projects, remoteSnapshot.projects),
+  settings: { ...remoteSnapshot.settings, ...localState.settings },
+});
+
 const applyChanges = (state: AppStateData, meta: SyncMeta, changes: SyncOperation[]) => {
   let nextState = { ...state };
   let nextMeta = { ...meta };
@@ -202,13 +218,11 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
           settings: { ...nextState.settings, ...bootstrap.data.snapshot.settings },
         };
       } else {
+        nextState = mergeFirstLinkState(nextState, bootstrap.data.snapshot);
         nextMeta.pendingOps = applyBootstrapVersions(
           nextMeta.pendingOps,
           {
             ...nextState,
-            tasks: bootstrap.data.snapshot.tasks,
-            projects: bootstrap.data.snapshot.projects,
-            settings: bootstrap.data.snapshot.settings,
           },
           bootstrap.data.settingsVersion,
         );

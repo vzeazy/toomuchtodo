@@ -88,6 +88,21 @@ Nuance:
 Nuance:
 - The checklist is ready, but I could not execute the live production-account verification from this environment because deployment credentials/access are not available here.
 
+### Phase 7 - Legacy hydration, background sync, and account UI polish (Completed)
+
+- Added first-link merge behavior so a device can hydrate remote tasks/projects from an older account shape while still preserving local unsynced items.
+- Added smart background sync triggers for:
+  - immediate post-sign-in bootstrap/sync,
+  - debounced local edits,
+  - app focus regain,
+  - browser reconnect.
+- Replaced the oversized settings-only sync UI with a shared `AccountSyncPanel` that is now used both in Settings and in a new top-bar account/sync modal opened from an icon-only status entry.
+- Strengthened password policy enforcement to require 12+ characters with upper/lower/number on both client guidance and backend sign-up validation.
+- Extended automated coverage for weak-password rejection and first-link merge behavior.
+
+Nuance:
+- The shared panel keeps advanced diagnostics collapsed by default while leaving the user-facing actions visible, so the power-user tooling remains available without dominating the normal settings flow.
+
 ## Review Findings
 
 ### High Severity

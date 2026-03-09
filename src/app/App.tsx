@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronsRight,
   Clock,
+  Cloud,
   Coffee,
   Columns,
   Eye,
@@ -53,6 +54,7 @@ import { CommandItem, CommandPalette } from '../features/command-palette/Command
 import { PlannerView } from '../features/planner/PlannerView';
 import { SearchView } from '../features/search/SearchView';
 import { SettingsView } from '../features/settings/SettingsView';
+import { AccountSyncModal } from '../features/settings/AccountSyncModal';
 import { TaskListView } from '../features/tasks/TaskListView';
 import { TaskModal } from '../features/tasks/TaskModal';
 import { TaskPanelWrapper, PanelState } from '../features/tasks/TaskPanelWrapper';
@@ -141,6 +143,7 @@ export default function App() {
   const [showAreaMenu, setShowAreaMenu] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [showAccountSyncModal, setShowAccountSyncModal] = useState(false);
   const [taskToEditInModal, setTaskToEditInModal] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -521,6 +524,20 @@ export default function App() {
   return (
     <div className="app-frame flex h-screen flex-col select-none" style={themeVariables}>
       {showShortcutsModal && <ShortcutsModal onClose={() => setShowShortcutsModal(false)} />}
+      {showAccountSyncModal && (
+        <AccountSyncModal
+          authSession={authSession}
+          syncMeta={syncMeta}
+          syncStatus={syncStatus}
+          onRefreshSession={refreshSession}
+          onSignUp={signUp}
+          onSignIn={signIn}
+          onSignOut={signOut}
+          onToggleCloudLinked={setCloudLinked}
+          onRunSyncNow={runSyncNow}
+          onClose={() => setShowAccountSyncModal(false)}
+        />
+      )}
       <CommandPalette open={showCommandPalette} commands={commands} resolveQuery={resolveCommandPaletteQuery} onClose={() => setShowCommandPalette(false)} />
 
       {taskToEditInModal && (
@@ -703,6 +720,22 @@ export default function App() {
 
           <button type="button" onClick={() => setShowShortcutsModal(true)} className="flex h-[30px] w-[34px] items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]">
             <Keyboard size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAccountSyncModal(true)}
+            className={`relative flex h-[30px] w-[34px] items-center justify-center transition-colors ${authSession ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+            title="Account & sync"
+            aria-label="Open account and sync"
+          >
+            <Cloud size={18} />
+            <span
+              className={`absolute right-[3px] top-[3px] h-2 w-2 rounded-full ${syncStatus === 'error'
+                ? 'bg-[var(--danger)]'
+                : authSession && syncMeta.cloudLinked
+                  ? 'bg-[var(--accent)]'
+                  : 'bg-[var(--text-muted)]/50'}`}
+            />
           </button>
 
           <div className="mx-1 hidden h-4 w-px bg-[var(--border-color)] lg:block" />

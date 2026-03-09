@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { moveTaskSubtree, moveTaskSubtreePreserveParent, updateTaskParent } from '../features/tasks/taskTree';
 import { authClient, AuthSession } from '../lib/sync/authClient';
 import { appendPendingOps, buildSyncOperations } from '../lib/sync/operations';
@@ -176,6 +176,14 @@ const updateSyncStatus = (value: string) => {
   notifyListeners();
 };
 
+const hasCustomLocalSettings = (state: AppStateData) => (
+  JSON.stringify(state.settings) !== JSON.stringify(INITIAL_SETTINGS)
+);
+
+const hasLocalSyncSeedData = (state: AppStateData) => (
+  state.tasks.length > 0 || state.projects.length > 0 || hasCustomLocalSettings(state)
+);
+
 const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
   const ts = Date.now();
   return [
@@ -199,7 +207,7 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       timestamp: ts,
       baseVersion: typeof task.syncVersion === 'number' ? task.syncVersion : null,
     })),
-    {
+    ...(hasCustomLocalSettings(state) ? [{
       id: uid('op'),
       entity: 'settings' as const,
       action: 'upsert' as const,
@@ -208,7 +216,7 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       deviceId: meta.deviceId,
       timestamp: ts,
       baseVersion: meta.settingsVersion,
-    },
+    }] : []),
   ];
 };
 
@@ -231,11 +239,31 @@ const mergeSyncMetaAfterRun = (resultMeta: SyncMeta, liveMeta: SyncMeta, started
   };
 };
 
+const primeLinkedMeta = (meta: SyncMeta, state: AppStateData): SyncMeta => {
+  const next: SyncMeta = {
+    ...meta,
+    mode: 'account',
+    cloudLinked: true,
+  };
+
+  if (!next.lastSyncAt) {
+    next.syncCursor = null;
+    next.settingsVersion = null;
+  }
+
+  if (!next.syncCursor && !next.pendingOps.length && hasLocalSyncSeedData(state)) {
+    next.pendingOps = buildInitialLinkOps(state, next);
+  }
+
+  return next;
+};
+
 export const useAppStore = () => {
   const [state, setLocalState] = useState<AppStateData>(getSharedState);
   const [meta, setMeta] = useState<SyncMeta>(getSharedSyncMeta);
   const [session, setSession] = useState<AuthSession | null>(memoryAuthSession);
   const [syncState, setSyncState] = useState(syncStatus);
+  const autoSyncSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
     const listener = () => {
@@ -252,7 +280,7 @@ export const useAppStore = () => {
 
   useEffect(() => {
     const onOnline = () => {
-      if (getSharedSyncMeta().cloudLinked) {
+      if (getSharedSyncMeta().cloudLinked && memoryAuthSession) {
         runSyncNow().catch(() => {
           updateSyncStatus('error');
         });
@@ -267,7 +295,7 @@ export const useAppStore = () => {
       memoryAuthSession = await authClient.getSession();
       if (memoryAuthSession) {
         const linked = getSharedSyncMeta();
-        setSharedSyncMeta({ ...linked, mode: 'account', cloudLinked: true });
+        setSharedSyncMeta(primeLinkedMeta(linked, getSharedState()));
       }
       notifyListeners();
     } catch (error) {
@@ -280,10 +308,7 @@ export const useAppStore = () => {
   const signUp = useCallback(async (email: string, password: string, turnstileToken?: string | null) => {
     memoryAuthSession = await authClient.signUp(email, password, turnstileToken);
     const linked = getSharedSyncMeta();
-    const next = { ...linked, mode: 'account' as const, cloudLinked: true };
-    if (!next.syncCursor && !next.pendingOps.length) {
-      next.pendingOps = buildInitialLinkOps(getSharedState(), next);
-    }
+    const next = primeLinkedMeta(linked, getSharedState());
     setSharedSyncMeta(next);
     notifyListeners();
   }, []);
@@ -291,10 +316,7 @@ export const useAppStore = () => {
   const signIn = useCallback(async (email: string, password: string, turnstileToken?: string | null) => {
     memoryAuthSession = await authClient.signIn(email, password, turnstileToken);
     const linked = getSharedSyncMeta();
-    const next = { ...linked, mode: 'account' as const, cloudLinked: true };
-    if (!next.syncCursor && !next.pendingOps.length) {
-      next.pendingOps = buildInitialLinkOps(getSharedState(), next);
-    }
+    const next = primeLinkedMeta(linked, getSharedState());
     setSharedSyncMeta(next);
     notifyListeners();
   }, []);
@@ -314,10 +336,7 @@ export const useAppStore = () => {
       mode: enabled ? 'account' : 'local',
       cloudLinked: enabled,
     };
-    if (enabled && !nextMeta.syncCursor && !nextMeta.pendingOps.length) {
-      nextMeta.pendingOps = buildInitialLinkOps(getSharedState(), nextMeta);
-    }
-    setSharedSyncMeta(nextMeta);
+    setSharedSyncMeta(enabled ? primeLinkedMeta(nextMeta, getSharedState()) : nextMeta);
     notifyListeners();
   }, []);
 
@@ -349,6 +368,49 @@ export const useAppStore = () => {
 
     return syncRunPromise;
   }, []);
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (getSharedSyncMeta().cloudLinked && memoryAuthSession) {
+        runSyncNow().catch(() => {
+          updateSyncStatus('error');
+        });
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [runSyncNow]);
+
+  useEffect(() => {
+    if (!session || !meta.cloudLinked) {
+      autoSyncSessionRef.current = null;
+      return;
+    }
+
+    if (meta.lastSyncAt || autoSyncSessionRef.current === session.user.id) return;
+    autoSyncSessionRef.current = session.user.id;
+    window.setTimeout(() => {
+      runSyncNow().catch(() => {
+        updateSyncStatus('error');
+      });
+    }, 50);
+  }, [meta.cloudLinked, meta.lastSyncAt, runSyncNow, session]);
+
+  useEffect(() => {
+    if (!session || !meta.cloudLinked || meta.pendingOps.length === 0) return;
+    const timer = window.setTimeout(() => {
+      runSyncNow().catch(() => {
+        updateSyncStatus('error');
+      });
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [meta.cloudLinked, meta.pendingOps.length, runSyncNow, session]);
 
   const addTask = useCallback((
     title: string,

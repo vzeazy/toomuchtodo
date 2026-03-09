@@ -1,4 +1,5 @@
 import { Env, UserSession } from '../types';
+import { getPasswordPolicyMessage, validatePasswordPolicy } from '../../../shared/passwordPolicy';
 import {
   buildSessionCookie,
   clearSessionCookie,
@@ -102,8 +103,13 @@ export const authRoutes = {
     const payload = await parseJson<AuthPayload>(request);
     const { email, password } = parseCreds(payload);
 
-    if (!email || password.length < 8) {
+    if (!email) {
       return json({ error: 'invalid_credentials' }, { status: 400 });
+    }
+
+    const passwordValidation = validatePasswordPolicy(password);
+    if (!passwordValidation.valid) {
+      return json({ error: 'weak_password', message: getPasswordPolicyMessage() }, { status: 400 });
     }
 
     const turnstileOk = await verifyTurnstile(env, payload?.turnstileToken || null);

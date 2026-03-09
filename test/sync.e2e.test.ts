@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPagesApiHarness } from './support/pagesApiHarness';
+import { mergeFirstLinkState } from '../src/lib/sync/engine';
+
+const strongPassword = 'Strongpass123';
 
 const readUserId = (payload: unknown) => {
   const user = payload as { user?: { id?: string } };
@@ -48,7 +51,7 @@ test('turnstile-enabled sign-up creates a session in the same request', async ()
     const signUp = await client.requestJson<{ user: { email: string } }>('/api/auth/sign-up', {
       body: {
         email: 'turnstile@example.com',
-        password: 'correct horse battery staple',
+        password: strongPassword,
         turnstileToken: 'turnstile-pass',
       },
     });
@@ -65,6 +68,26 @@ test('turnstile-enabled sign-up creates a session in the same request', async ()
   }
 });
 
+test('sign-up rejects weak passwords that do not meet the new policy', async () => {
+  const harness = createPagesApiHarness();
+
+  try {
+    const client = harness.createClient();
+    const response = await client.requestJson<{ error: string; message: string }>('/api/auth/sign-up', {
+      body: {
+        email: 'weak@example.com',
+        password: 'weakpass',
+      },
+    });
+
+    assert.equal(response.response.status, 400);
+    assert.equal(response.data.error, 'weak_password');
+    assert.match(response.data.message, /12 characters/i);
+  } finally {
+    harness.close();
+  }
+});
+
 test('user-scoped settings and record ids stay isolated across accounts', async () => {
   const harness = createPagesApiHarness();
 
@@ -73,10 +96,10 @@ test('user-scoped settings and record ids stay isolated across accounts', async 
     const bob = harness.createClient();
 
     const aliceAuth = await alice.requestJson('/api/auth/sign-up', {
-      body: { email: 'alice@example.com', password: 'password-123' },
+      body: { email: 'alice@example.com', password: strongPassword },
     });
     const bobAuth = await bob.requestJson('/api/auth/sign-up', {
-      body: { email: 'bob@example.com', password: 'password-123' },
+      body: { email: 'bob@example.com', password: strongPassword },
     });
 
     assert.equal(aliceAuth.response.status, 200);
@@ -158,7 +181,7 @@ test('sign-in, session refresh, sign-out, bootstrap, push, pull, and first-link 
     const deviceA = harness.createClient();
     const deviceB = harness.createClient();
     const email = 'shared@example.com';
-    const password = 'password-123';
+    const password = strongPassword;
 
     const signUp = await deviceA.requestJson('/api/auth/sign-up', {
       body: { email, password },
@@ -277,7 +300,7 @@ test('same-record concurrent edits return a structured version conflict with the
     const deviceA = harness.createClient();
     const deviceB = harness.createClient();
     const email = 'conflict@example.com';
-    const password = 'password-123';
+    const password = strongPassword;
 
     await deviceA.requestJson('/api/auth/sign-up', { body: { email, password } });
     await deviceB.requestJson('/api/auth/sign-in', { body: { email, password } });
@@ -356,7 +379,7 @@ test('replaying the same push op id is idempotent and does not duplicate change 
 
   try {
     const client = harness.createClient();
-    await client.requestJson('/api/auth/sign-up', { body: { email: 'retry@example.com', password: 'password-123' } });
+    await client.requestJson('/api/auth/sign-up', { body: { email: 'retry@example.com', password: strongPassword } });
 
     const bootstrap = await client.requestJson<{ cursor: string }>('/api/sync/bootstrap');
     const pushPayload = {
@@ -385,4 +408,45 @@ test('replaying the same push op id is idempotent and does not duplicate change 
   } finally {
     harness.close();
   }
+});
+
+test('first-link merge keeps local tasks while hydrating remote tasks and projects', () => {
+  const localState = {
+    version: 2,
+    tasks: [baseTask({ id: 'local-task', title: 'Local task', syncVersion: null })],
+    projects: [],
+    settings: {
+      activeThemeId: 'local-theme',
+      plannerWidthMode: 'container',
+      taskListMode: 'outline',
+      showCompletedTasks: true,
+      hideEmptyProjectsInPlanner: false,
+      compactEmptyDaysInPlanner: false,
+      startPlannerOnToday: false,
+      groupDayViewByPart: false,
+    },
+    themes: [],
+    timer: {
+      active: false,
+      paused: false,
+      duration: 1800,
+      remaining: 1800,
+      linkedTaskId: null,
+      sessionTitle: null,
+      lastTick: null,
+      finished: false,
+      minimized: false,
+    },
+  };
+
+  const merged = mergeFirstLinkState(localState, {
+    tasks: [baseTask({ id: 'remote-task', title: 'Remote task', syncVersion: 2 })],
+    projects: [{ id: 'remote-project', name: 'Remote project', parentId: null, updatedAt: 1_700_000_003_000, deletedAt: null, syncVersion: 1 }],
+    settings: { ...localState.settings, activeThemeId: 'remote-theme', taskListMode: 'list' },
+  });
+
+  assert.deepEqual(merged.tasks.map((task) => task.id).sort(), ['local-task', 'remote-task']);
+  assert.deepEqual(merged.projects.map((project) => project.id), ['remote-project']);
+  assert.equal(merged.settings.activeThemeId, 'local-theme');
+  assert.equal(merged.settings.taskListMode, 'outline');
 });
