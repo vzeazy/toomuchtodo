@@ -319,11 +319,11 @@ export const OutlineTaskRow: React.FC<{
                       setIsEditingTitle(false);
                     }
                   }}
-                  className={`w-full bg-transparent p-0 tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0 ${compact ? 'text-[12.5px]' : 'text-[13px]'}`}
+                  className={`w-full bg-transparent p-0 font-medium tracking-[-0.01em] text-[var(--text-primary)] outline-none border-none focus:ring-0 ${compact ? 'text-[12.5px]' : 'text-[13px]'}`}
                 />
               ) : (
                 <span
-                  className={`truncate tracking-[-0.01em] ${compact ? 'text-[12.5px]' : 'text-[13px]'} ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
+                  className={`truncate font-medium tracking-[-0.01em] ${compact ? 'text-[12.5px]' : 'text-[13px]'} ${task.status === 'completed' ? `text-[var(--text-muted)] brutal-strike-line ${isJustCompleted ? 'animate-strike' : ''}` : 'text-[var(--text-primary)]'}`}
                 >
                   {task.title}
                 </span>

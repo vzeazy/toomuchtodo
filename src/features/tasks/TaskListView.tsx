@@ -930,6 +930,7 @@ export const TaskListView: React.FC<{
               onAdd={handleAddTask}
               className="mt-3 px-5 py-3 opacity-85 hover:opacity-100"
               iconSize={16}
+              textSizeClass={currentView === 'day' ? 'text-[12.5px]' : 'text-[13px]'}
             />
           )}
         </div>
