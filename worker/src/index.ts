@@ -59,17 +59,16 @@ const router = async (request: Request, env: Env): Promise<Response> => {
   return json({ error: 'not_found' }, { status: 404 });
 };
 
+const fetchHandler = (request: Request, env: Env): Promise<Response> => {
+  return router(request, env)
+    .then((response) => withCors(response, request, env))
+    .catch((error) => withCors(
+      json({ error: 'internal_error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 }),
+      request,
+      env,
+    ));
+};
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    try {
-      const response = await router(request, env);
-      return withCors(response, request, env);
-    } catch (error) {
-      return withCors(
-        json({ error: 'internal_error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 }),
-        request,
-        env,
-      );
-    }
-  },
+  fetch: fetchHandler,
 };
