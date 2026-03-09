@@ -16,7 +16,18 @@
 
 **Nuance:** location normalization intentionally keeps URL state limited to the plan's scope: planner week offset, day date, and project selection. Transient UI state like sidebar collapse, search query, modals, and multi-panel state remains ephemeral.
 
-**Status:** implementation complete, validation in progress.
+### Milestone 2 — Validation completed
+
+- Verified the app still builds with `npm run build`
+- Ran a Playwright smoke test against a local Vite server covering:
+  - `#planner?week=-2` refresh and reset-to-today behavior
+  - `#day?date=2026-03-09` refresh and date-preserving day navigation
+  - project drill-down to `#all?project=<id>` plus browser Back behavior
+  - settings navigation and refresh persistence at `#settings`
+
+**Nuance:** the smoke test seeded localStorage with a minimal app state so project/day routes could be exercised deterministically without changing app code or introducing new dependencies.
+
+**Status:** implementation and validation complete.
 
 ---
 
