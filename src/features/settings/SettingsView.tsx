@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Download, Palette, Settings2, Upload } from 'lucide-react';
+import { Cloud, Copy, Download, LogIn, Palette, RefreshCw, Settings2, ShieldCheck, Upload, UserPlus } from 'lucide-react';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { getTaskListGenerationPrompt, isTaskListExchange } from '../../lib/taskListExchange';
 import { getThemePrompt, validateThemeDefinition } from '../../lib/theme';
@@ -51,6 +51,8 @@ export const SettingsView: React.FC<{
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-up');
+  const [authPending, setAuthPending] = useState<'sign-in' | 'sign-up' | 'refresh' | 'sign-out' | null>(null);
   const [themeBrief, setThemeBrief] = useState('');
   const [themeJson, setThemeJson] = useState('');
   const [llmProjectName, setLlmProjectName] = useState('');
@@ -72,6 +74,15 @@ export const SettingsView: React.FC<{
     ? { type: 'inbox' }
     : { type: 'project', projectId: taskListProjectId };
   const canUseProjectScope = taskListScopeMode === 'inbox' || !!taskListProjectId;
+  const trimmedEmail = email.trim();
+  const passwordLength = password.length;
+  const canSubmitAuth = !!trimmedEmail && passwordLength >= 8 && !authPending;
+  const syncEnabledAndAuthed = syncMeta.cloudLinked && !!authSession;
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) return error.message;
+    return fallback;
+  };
 
   const importTaskListFile = async (
     file: File,
@@ -163,82 +174,211 @@ export const SettingsView: React.FC<{
         </div>
         <div className="space-y-4">
           {!authSession ? (
-            <>
-              <div className="grid gap-3 md:grid-cols-2">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="Email"
-                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Password"
-                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--focus)]"
-                />
+            <div className="overflow-hidden rounded-[24px] border border-[var(--border-color)] bg-[linear-gradient(135deg,rgba(255,255,255,0.045),transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_100%)]">
+              <div className="grid gap-0 lg:grid-cols-[1.05fr_0.95fr]">
+                <div className="border-b border-[var(--border-color)] px-5 py-5 lg:border-b-0 lg:border-r">
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                        <ShieldCheck size={12} className="text-[var(--accent)]" />
+                        Account access
+                      </div>
+                      <div className="text-[24px] font-semibold leading-[1.02] tracking-[-0.04em] text-[var(--text-primary)]">
+                        Save your work across devices
+                      </div>
+                      <p className="mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
+                        Create an account to link this device, keep a cloud backup, and sync your task graph when you move between machines.
+                      </p>
+                    </div>
+                    <div className="hidden rounded-[20px] border border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] p-3 text-[var(--accent)] md:block">
+                      <Cloud size={22} />
+                    </div>
+                  </div>
+
+                  <div className="mb-4 inline-flex rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-1">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('sign-up')}
+                      className={`rounded-[14px] px-4 py-2 text-sm font-semibold transition ${authMode === 'sign-up'
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_12px_30px_rgba(0,0,0,0.18)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                    >
+                      Create account
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('sign-in')}
+                      className={`rounded-[14px] px-4 py-2 text-sm font-semibold transition ${authMode === 'sign-in'
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_12px_30px_rgba(0,0,0,0.18)]'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                    >
+                      Sign in
+                    </button>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <label className="space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Email</div>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="you@company.com"
+                        className="w-full rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--focus)]"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Password</div>
+                        <div className={`text-[11px] ${passwordLength >= 8 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                          {passwordLength >= 8 ? 'ready' : 'minimum 8 characters'}
+                        </div>
+                      </div>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder={authMode === 'sign-up' ? 'Create a password' : 'Enter your password'}
+                        className="w-full rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-3 text-sm text-[var(--text-primary)] outline-none transition focus:border-[var(--focus)]"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      disabled={!canSubmitAuth}
+                      onClick={async () => {
+                        const nextMode = authMode;
+                        setAuthPending(nextMode);
+                        try {
+                          if (nextMode === 'sign-in') {
+                            await onSignIn(trimmedEmail, password);
+                            setMessage('Signed in successfully.');
+                          } else {
+                            await onSignUp(trimmedEmail, password);
+                            setMessage('Account created and signed in.');
+                          }
+                        } catch (error) {
+                          setMessage(getErrorMessage(error, nextMode === 'sign-in' ? 'Sign in failed.' : 'Sign up failed.'));
+                        } finally {
+                          setAuthPending(null);
+                        }
+                      }}
+                      className="flex items-center gap-2 rounded-[16px] bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      {authMode === 'sign-in' ? <LogIn size={15} /> : <UserPlus size={15} />}
+                      {authPending === authMode ? (authMode === 'sign-in' ? 'Signing in...' : 'Creating account...') : (authMode === 'sign-in' ? 'Sign in' : 'Create account')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!authPending}
+                      onClick={async () => {
+                        setAuthPending('refresh');
+                        try {
+                          await onRefreshSession();
+                          setMessage('Session refreshed.');
+                        } catch (error) {
+                          setMessage(getErrorMessage(error, 'Session refresh failed.'));
+                        } finally {
+                          setAuthPending(null);
+                        }
+                      }}
+                      className="flex items-center gap-2 rounded-[16px] border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-55"
+                    >
+                      <RefreshCw size={15} className={authPending === 'refresh' ? 'animate-spin' : ''} />
+                      {authPending === 'refresh' ? 'Refreshing...' : 'Refresh session'}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 text-xs leading-5 text-[var(--text-muted)]">
+                    {authMode === 'sign-up'
+                      ? 'New account flow creates a session immediately and primes this device for first sync.'
+                      : 'Use the same email and password you used when the account was created.'}
+                  </div>
+                </div>
+
+                <div className="px-5 py-5">
+                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Cloud sync readiness</div>
+                  <div className="space-y-3">
+                    <div className="rounded-[20px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
+                      <div className="text-sm font-semibold text-[var(--text-primary)]">Connection target</div>
+                      <div className="mt-1 text-sm text-[var(--text-secondary)]">
+                        API requests should go to your dedicated sync worker, not the Pages host.
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[20px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Cloud mode</div>
+                        <div className="mt-2 text-lg font-semibold text-[var(--text-primary)]">{syncMeta.cloudLinked ? 'Enabled' : 'Local only'}</div>
+                      </div>
+                      <div className="rounded-[20px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Pending changes</div>
+                        <div className="mt-2 text-lg font-semibold text-[var(--text-primary)]">{syncMeta.pendingOps.length}</div>
+                      </div>
+                    </div>
+                    <div className="rounded-[20px] border border-[var(--border-color)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent)_12%,transparent),transparent)] px-4 py-4 text-sm leading-6 text-[var(--text-secondary)]">
+                      Once auth is working, this device can upload its local state and pull down changes from the server during sync runs.
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await onSignIn(email.trim(), password);
-                      setMessage('Signed in successfully.');
-                    } catch {
-                      setMessage('Sign in failed.');
-                    }
-                  }}
-                  className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
-                >
-                  Sign in
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await onSignUp(email.trim(), password);
-                      setMessage('Account created and signed in.');
-                    } catch {
-                      setMessage('Sign up failed.');
-                    }
-                  }}
-                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
-                >
-                  Sign up
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await onRefreshSession();
-                    setMessage('Session refreshed.');
-                  }}
-                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
-                >
-                  Refresh session
-                </button>
-              </div>
-            </>
+            </div>
           ) : (
-            <>
-              <div className="text-sm text-[var(--text-secondary)]">
-                Signed in as <span className="font-semibold text-[var(--text-primary)]">{authSession.user.email}</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
+            <div className="rounded-[24px] border border-[var(--border-color)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--accent)_12%,transparent),transparent_50%)] p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--accent)_26%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
+                    <ShieldCheck size={12} />
+                    Connected
+                  </div>
+                  <div className="text-sm text-[var(--text-secondary)]">
+                    Signed in as <span className="font-semibold text-[var(--text-primary)]">{authSession.user.email}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    disabled={!!authPending}
+                    onClick={async () => {
+                      setAuthPending('refresh');
+                      try {
+                        await onRefreshSession();
+                        setMessage('Session refreshed.');
+                      } catch (error) {
+                        setMessage(getErrorMessage(error, 'Session refresh failed.'));
+                      } finally {
+                        setAuthPending(null);
+                      }
+                    }}
+                    className="flex items-center gap-2 rounded-[16px] border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    <RefreshCw size={15} className={authPending === 'refresh' ? 'animate-spin' : ''} />
+                    {authPending === 'refresh' ? 'Refreshing...' : 'Refresh session'}
+                  </button>
                 <button
                   type="button"
+                  disabled={!!authPending}
                   onClick={async () => {
-                    await onSignOut();
-                    setMessage('Signed out.');
+                    setAuthPending('sign-out');
+                    try {
+                      await onSignOut();
+                      setMessage('Signed out.');
+                    } catch (error) {
+                      setMessage(getErrorMessage(error, 'Sign out failed.'));
+                    } finally {
+                      setAuthPending(null);
+                    }
                   }}
-                  className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
+                  className="rounded-[16px] border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-55"
                 >
-                  Sign out
+                  {authPending === 'sign-out' ? 'Signing out...' : 'Sign out'}
                 </button>
+                </div>
               </div>
-            </>
+            </div>
           )}
 
           <div className="panel-muted rounded-2xl border soft-divider px-4 py-3 text-sm text-[var(--text-secondary)]">
@@ -253,25 +393,27 @@ export const SettingsView: React.FC<{
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
+              disabled={!authSession}
               onClick={() => {
                 onToggleCloudLinked(!syncMeta.cloudLinked);
                 setMessage(syncMeta.cloudLinked ? 'Switched to local-only mode.' : 'Cloud sync mode enabled.');
               }}
-              className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)]"
+              className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {syncMeta.cloudLinked ? 'Disable cloud sync' : 'Enable cloud sync'}
             </button>
             <button
               type="button"
+              disabled={!syncEnabledAndAuthed}
               onClick={async () => {
                 try {
                   await onRunSyncNow();
                   setMessage('Sync complete.');
-                } catch {
-                  setMessage('Sync failed.');
+                } catch (error) {
+                  setMessage(getErrorMessage(error, 'Sync failed.'));
                 }
               }}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)]"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Run sync now
             </button>
