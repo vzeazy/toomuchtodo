@@ -20,6 +20,12 @@ interface AuthPayload {
   turnstileToken?: string;
 }
 
+interface AuthUser {
+  id: string;
+  email: string;
+  createdAt: number;
+}
+
 const getSessionFromRequest = async (env: Env, request: Request): Promise<UserSession | null> => {
   const cookieName = env.SESSION_COOKIE_NAME || 'tmtd_session';
   const token = readCookie(request, cookieName);
@@ -27,13 +33,13 @@ const getSessionFromRequest = async (env: Env, request: Request): Promise<UserSe
   const tokenHash = await hash(token);
 
   const row = await env.DB.prepare(
-    `SELECT s.id as sessionId, s.user_id as userId, u.email as email
+    `SELECT s.id as sessionId, s.user_id as userId, u.email as email, u.created_at as createdAt
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
     .bind(tokenHash, now())
-    .first<{ sessionId: string; userId: string; email: string }>();
+    .first<{ sessionId: string; userId: string; email: string; createdAt: number }>();
 
   if (!row) return null;
 
@@ -42,6 +48,36 @@ const getSessionFromRequest = async (env: Env, request: Request): Promise<UserSe
     .run();
 
   return row;
+};
+
+const createSessionResponse = async (
+  env: Env,
+  user: AuthUser,
+  options: { ip?: string; recordSignInAudit?: boolean } = {},
+) => {
+  const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
+  const tokenHash = await hash(token);
+  const sessionId = id('sess');
+  const ts = now();
+
+  const statements = [
+    env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(sessionId, user.id, tokenHash, ts, ts + (60 * 60 * 24 * 30 * 1000)),
+  ];
+
+  if (options.recordSignInAudit) {
+    statements.push(
+      env.DB.prepare('INSERT INTO audit_events (id, user_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(id('audit'), user.id, 'sign_in', JSON.stringify({ ip: options.ip || 'unknown' }), ts),
+    );
+  }
+
+  await env.DB.batch(statements);
+
+  return json(
+    { user: { id: user.id, email: user.email, createdAt: user.createdAt } },
+    { headers: { 'set-cookie': buildSessionCookie(env, token) } },
+  );
 };
 
 const requireSession = async (env: Env, request: Request) => {
@@ -88,11 +124,7 @@ export const authRoutes = {
         .bind(id('audit'), userId, 'sign_up', JSON.stringify({ email }), ts),
     ]);
 
-    return this.signIn(env, new Request(request.url, {
-      method: 'POST',
-      headers: request.headers,
-      body: JSON.stringify({ email, password }),
-    }));
+    return createSessionResponse(env, { id: userId, email, createdAt: ts });
   },
 
   async signIn(env: Env, request: Request) {
@@ -111,31 +143,16 @@ export const authRoutes = {
     const turnstileOk = await verifyTurnstile(env, payload?.turnstileToken || null);
     if (!turnstileOk) return json({ error: 'turnstile_failed' }, { status: 400 });
 
-    const row = await env.DB.prepare('SELECT id, email, password_hash as passwordHash, salt FROM users WHERE email = ?')
+    const row = await env.DB.prepare('SELECT id, email, password_hash as passwordHash, salt, created_at as createdAt FROM users WHERE email = ?')
       .bind(email)
-      .first<{ id: string; email: string; passwordHash: string; salt: string }>();
+      .first<{ id: string; email: string; passwordHash: string; salt: string; createdAt: number }>();
 
     if (!row) return json({ error: 'invalid_credentials' }, { status: 401 });
 
     const passwordHash = await hashPassword(password, row.salt, env.SESSION_SECRET);
     if (passwordHash !== row.passwordHash) return json({ error: 'invalid_credentials' }, { status: 401 });
 
-    const token = `${crypto.randomUUID()}.${crypto.randomUUID()}`;
-    const tokenHash = await hash(token);
-    const sessionId = id('sess');
-    const ts = now();
-
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(sessionId, row.id, tokenHash, ts, ts + (60 * 60 * 24 * 30 * 1000)),
-      env.DB.prepare('INSERT INTO audit_events (id, user_id, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(id('audit'), row.id, 'sign_in', JSON.stringify({ ip }), ts),
-    ]);
-
-    return json(
-      { user: { id: row.id, email: row.email, createdAt: ts } },
-      { headers: { 'set-cookie': buildSessionCookie(env, token) } },
-    );
+    return createSessionResponse(env, { id: row.id, email: row.email, createdAt: row.createdAt }, { ip, recordSignInAudit: true });
   },
 
   async signOut(env: Env, request: Request) {
@@ -155,7 +172,7 @@ export const authRoutes = {
   async session(env: Env, request: Request) {
     const session = await getSessionFromRequest(env, request);
     if (!session) return json({ error: 'unauthorized' }, { status: 401 });
-    return json({ user: { id: session.userId, email: session.email, createdAt: now() } });
+    return json({ user: { id: session.userId, email: session.email, createdAt: session.createdAt } });
   },
 
   requireSession,

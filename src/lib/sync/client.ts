@@ -1,9 +1,11 @@
-import { AppStateData, SyncMeta, SyncOperation } from '../../types';
+import { AppStateData, SyncConflict, SyncMeta, SyncOperation } from '../../types';
+import { ApiResponse, requestJson } from './http';
 
 export interface SyncBootstrapResponse {
   serverTime: number;
   cursor: string;
   snapshot: Pick<AppStateData, 'tasks' | 'projects' | 'settings'>;
+  settingsVersion: number | null;
   schema: {
     minSupportedClientSchema: number;
     latestSchema: number;
@@ -12,7 +14,8 @@ export interface SyncBootstrapResponse {
 
 export interface SyncPushResponse {
   accepted: number;
-  conflicts: number;
+  acceptedOpIds: string[];
+  conflicts: SyncConflict[];
   cursor: string;
 }
 
@@ -28,54 +31,25 @@ export interface SyncPullResponse {
   };
 }
 
-const readErrorDetail = async (response: Response) => {
-  try {
-    const data = await response.json() as { error?: string; message?: string };
-    return data.message || data.error || '';
-  } catch {
-    return '';
-  }
-};
-
-const withBase = (path: string) => {
-  const base = (import.meta.env.VITE_API_BASE_URL || '').trim();
-  return `${base}${path}`;
-};
-
 export const syncApi = {
   async bootstrap() {
-    const response = await fetch(withBase('/api/sync/bootstrap'), { credentials: 'include' });
-    if (!response.ok) {
-      const detail = await readErrorDetail(response);
-      throw new Error(`bootstrap failed (${response.status}${detail ? `: ${detail}` : ''})`);
-    }
-    return response.json() as Promise<SyncBootstrapResponse>;
+    return requestJson<SyncBootstrapResponse>('bootstrap', '/api/sync/bootstrap');
   },
   async push(meta: SyncMeta, ops: SyncOperation[]) {
-    const response = await fetch(withBase('/api/sync/push'), {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+    return requestJson<SyncPushResponse>('push', '/api/sync/push', {
+      body: {
         deviceId: meta.deviceId,
         cursor: meta.syncCursor,
         ops,
-      }),
+      },
+      retries: 2,
     });
-    if (!response.ok) {
-      const detail = await readErrorDetail(response);
-      throw new Error(`push failed (${response.status}${detail ? `: ${detail}` : ''})`);
-    }
-    return response.json() as Promise<SyncPushResponse>;
   },
   async pull(meta: SyncMeta) {
     const params = new URLSearchParams();
     if (meta.syncCursor) params.set('cursor', meta.syncCursor);
-    const response = await fetch(withBase(`/api/sync/pull?${params.toString()}`), { credentials: 'include' });
-    if (!response.ok) {
-      const detail = await readErrorDetail(response);
-      throw new Error(`pull failed (${response.status}${detail ? `: ${detail}` : ''})`);
-    }
-    return response.json() as Promise<SyncPullResponse>;
+    return requestJson<SyncPullResponse>('pull', `/api/sync/pull?${params.toString()}`, { retries: 2 });
   },
 };
+
+export type SyncApiResult<T> = ApiResponse<T>;

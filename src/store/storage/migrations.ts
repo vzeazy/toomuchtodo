@@ -1,4 +1,4 @@
-import { AppStateData, AppSettings, SyncMeta, ThemeDefinition, TimerState } from '../../types';
+import { AppStateData, AppSettings, SyncDiagnostics, SyncMeta, ThemeDefinition, TimerState } from '../../types';
 import { builtInThemes } from '../../themes/builtInThemes';
 
 export const APP_SCHEMA_VERSION = 2;
@@ -32,6 +32,18 @@ const dedupeThemes = (themes: ThemeDefinition[]) => {
   return Array.from(seen.values());
 };
 
+const createDefaultSyncDiagnostics = (): SyncDiagnostics => ({
+  stage: 'idle',
+  status: 'idle',
+  at: null,
+  statusCode: null,
+  serverCode: null,
+  requestId: null,
+  retryCount: 0,
+  message: null,
+  conflictCount: 0,
+});
+
 export interface PersistedEnvelope {
   localSchemaVersion: number;
   state: AppStateData;
@@ -57,6 +69,9 @@ export const createDefaultSyncMeta = (): SyncMeta => ({
   pendingOps: [],
   localSchemaVersion: APP_SCHEMA_VERSION,
   schemaBlocked: false,
+  settingsVersion: null,
+  lastConflicts: [],
+  lastSyncDiagnostics: createDefaultSyncDiagnostics(),
 });
 
 const migrateV1toV2 = (state: AppStateData): AppStateData => {
@@ -68,11 +83,13 @@ const migrateV1toV2 = (state: AppStateData): AppStateData => {
       ...task,
       updatedAt: typeof task.updatedAt === 'number' ? task.updatedAt : (typeof task.createdAt === 'number' ? task.createdAt : now),
       deletedAt: typeof task.deletedAt === 'number' ? task.deletedAt : null,
+      syncVersion: typeof task.syncVersion === 'number' ? task.syncVersion : null,
     })),
     projects: state.projects.map((project) => ({
       ...project,
       updatedAt: typeof project.updatedAt === 'number' ? project.updatedAt : now,
       deletedAt: typeof project.deletedAt === 'number' ? project.deletedAt : null,
+      syncVersion: typeof project.syncVersion === 'number' ? project.syncVersion : null,
     })),
     settings: {
       ...INITIAL_SETTINGS,
@@ -82,6 +99,8 @@ const migrateV1toV2 = (state: AppStateData): AppStateData => {
     timer: state.timer || INITIAL_TIMER_STATE,
   };
 };
+
+export const createDefaultSyncDiagnosticsState = createDefaultSyncDiagnostics;
 
 export const runStateMigrations = (input: PersistedEnvelope | AppStateData | null | undefined): PersistedEnvelope => {
   if (!input) {

@@ -84,10 +84,31 @@ export const SettingsView: React.FC<{
   const passwordLength = password.length;
   const canSubmitAuth = !!trimmedEmail && passwordLength >= 8 && !authPending && (!turnstileEnabled || !!turnstileToken);
   const syncEnabledAndAuthed = syncMeta.cloudLinked && !!authSession;
+  const syncDiagnosticsText = useMemo(() => JSON.stringify({
+    status: syncStatus,
+    deviceId: syncMeta.deviceId,
+    syncCursor: syncMeta.syncCursor,
+    pendingOps: syncMeta.pendingOps.length,
+    schemaBlocked: syncMeta.schemaBlocked,
+    settingsVersion: syncMeta.settingsVersion,
+    lastSyncAt: syncMeta.lastSyncAt,
+    lastSyncDiagnostics: syncMeta.lastSyncDiagnostics,
+    lastConflicts: syncMeta.lastConflicts,
+  }, null, 2), [syncMeta, syncStatus]);
 
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message) return error.message;
     return fallback;
+  };
+
+  const downloadSyncDiagnostics = () => {
+    const blob = new Blob([syncDiagnosticsText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'too-much-to-do-sync-diagnostics.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -411,7 +432,7 @@ export const SettingsView: React.FC<{
                     <div className="rounded-[20px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
                       <div className="text-sm font-semibold text-[var(--text-primary)]">Connection target</div>
                       <div className="mt-1 text-sm text-[var(--text-secondary)]">
-                        API requests should go to your dedicated sync worker, not the Pages host.
+                        API requests should stay on the same origin and flow through Cloudflare Pages Functions at <code>/api/*</code>.
                       </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -493,6 +514,54 @@ export const SettingsView: React.FC<{
             <div>Pending ops: {syncMeta.pendingOps.length}</div>
             <div>Last sync: {syncMeta.lastSyncAt ? new Date(syncMeta.lastSyncAt).toLocaleString() : 'Never'}</div>
             <div>Schema blocked: {syncMeta.schemaBlocked ? 'yes' : 'no'}</div>
+            <div>Settings version: {syncMeta.settingsVersion ?? 'none'}</div>
+            <div>Last stage: {syncMeta.lastSyncDiagnostics?.stage || 'idle'}</div>
+            <div>Last status code: {syncMeta.lastSyncDiagnostics?.statusCode ?? 'n/a'}</div>
+            <div>Last server code: {syncMeta.lastSyncDiagnostics?.serverCode || 'n/a'}</div>
+            <div>Last request ID: {syncMeta.lastSyncDiagnostics?.requestId || 'n/a'}</div>
+            <div>Last retry count: {syncMeta.lastSyncDiagnostics?.retryCount ?? 0}</div>
+            <div>Last conflicts: {syncMeta.lastConflicts.length}</div>
+            {syncMeta.lastSyncDiagnostics?.message && (
+              <div className="mt-2 rounded-xl border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-3 py-2 text-xs leading-5 text-[var(--text-primary)]">
+                {syncMeta.lastSyncDiagnostics.message}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-[var(--text-primary)]">Sync diagnostics</div>
+                <div className="text-xs text-[var(--text-muted)]">Copy or export the last sync run details for debugging.</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const copied = await copyTextToClipboard(syncDiagnosticsText);
+                    setMessage(copied ? 'Sync diagnostics copied to clipboard.' : 'Copy failed. Please copy the diagnostics manually.');
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)]"
+                >
+                  <Copy size={14} />
+                  Copy diagnostics
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadSyncDiagnostics();
+                    setMessage('Sync diagnostics downloaded.');
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)]"
+                >
+                  <Download size={14} />
+                  Export diagnostics
+                </button>
+              </div>
+            </div>
+            <pre className="max-h-64 overflow-auto rounded-xl border border-[var(--border-color)] bg-[var(--panel-bg)] p-3 text-[11px] leading-5 text-[var(--text-secondary)] whitespace-pre-wrap">
+              {syncDiagnosticsText}
+            </pre>
           </div>
 
           <div className="flex flex-wrap gap-3">

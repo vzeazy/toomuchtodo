@@ -1,10 +1,11 @@
 import { authRoutes } from '../../worker/src/routes/auth';
 import { syncRoutes } from '../../worker/src/routes/sync';
-import { isAllowedOrigin, json } from '../../worker/src/lib';
+import { REQUEST_ID_HEADER, errorJson, isAllowedOrigin, json, withRequestId } from '../../worker/src/lib';
 import { Env } from '../../worker/src/types';
 
 const withCors = (response: Response, request: Request, env: Env) => {
   const headers = new Headers(response.headers);
+  headers.set(REQUEST_ID_HEADER, request.headers.get(REQUEST_ID_HEADER) || headers.get(REQUEST_ID_HEADER) || '');
   const origin = request.headers.get('origin');
   if (origin && isAllowedOrigin(env, request)) {
     headers.set('access-control-allow-origin', origin);
@@ -55,13 +56,17 @@ export const handleApiRequest = async (request: Request, env: Env): Promise<Resp
   return json({ error: 'not_found' }, { status: 404 });
 };
 
-export const finalizeApiResponse = async (request: Request, env: Env, work: () => Promise<Response>): Promise<Response> => {
+export const finalizeApiResponse = async (request: Request, env: Env, work: (request: Request) => Promise<Response>): Promise<Response> => {
+  const requestWithId = withRequestId(request);
   try {
-    return withCors(await work(), request, env);
+    return withCors(await work(requestWithId), requestWithId, env);
   } catch (error) {
     return withCors(
-      json({ error: 'internal_error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 }),
-      request,
+      errorJson(requestWithId, 'internal_error', { status: 500 }, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        retryable: true,
+      }),
+      requestWithId,
       env,
     );
   }

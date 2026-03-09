@@ -7,5 +7,5 @@ interface PagesContext {
 }
 
 export const onRequest = ({ request, env }: PagesContext): Promise<Response> => {
-  return finalizeApiResponse(request, env, () => handleApiRequest(request, env));
+  return finalizeApiResponse(request, env, (requestWithId) => handleApiRequest(requestWithId, env));
 };

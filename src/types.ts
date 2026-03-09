@@ -13,6 +13,7 @@ export interface Project {
   parentId?: string | null;
   updatedAt: number;
   deletedAt: number | null;
+  syncVersion?: number | null;
 }
 
 export interface Task {
@@ -31,6 +32,7 @@ export interface Task {
   tags: string[];
   updatedAt: number;
   deletedAt: number | null;
+  syncVersion?: number | null;
 }
 
 export interface ThemeTokens {
@@ -103,6 +105,31 @@ export interface SyncOperation {
   payload: Record<string, unknown>;
   deviceId: string;
   timestamp: number;
+  baseVersion?: number | null;
+  version?: number | null;
+}
+
+export interface SyncConflict {
+  opId: string;
+  entity: SyncOperation['entity'];
+  action: SyncOperation['action'];
+  recordId: string;
+  reason: 'version_mismatch';
+  clientVersion: number | null;
+  serverVersion: number | null;
+  serverRecord: Record<string, unknown> | null;
+}
+
+export interface SyncDiagnostics {
+  stage: 'idle' | 'bootstrap' | 'push' | 'pull';
+  status: 'idle' | 'syncing' | 'success' | 'error';
+  at: number | null;
+  statusCode: number | null;
+  serverCode: string | null;
+  requestId: string | null;
+  retryCount: number;
+  message: string | null;
+  conflictCount: number;
 }
 
 export interface SyncMeta {
@@ -114,6 +141,9 @@ export interface SyncMeta {
   pendingOps: SyncOperation[];
   localSchemaVersion: number;
   schemaBlocked: boolean;
+  settingsVersion: number | null;
+  lastConflicts: SyncConflict[];
+  lastSyncDiagnostics: SyncDiagnostics | null;
 }
 
 export interface AppDataExport {

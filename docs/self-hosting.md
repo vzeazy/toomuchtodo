@@ -63,3 +63,38 @@ If you previously set `VITE_API_BASE_URL` to `https://api.do.webme.ca` or any ot
 - Local-only mode still works with no account and no worker.
 - Sync schema compatibility is enforced by `/api/sync/bootstrap` and `/api/sync/pull`.
 - Same-origin Pages Functions avoids the CORS and cookie issues that come with a separate Worker hostname.
+
+## Production verification checklist
+
+Use a brand-new test account and verify the full same-origin Pages Functions path end to end:
+
+1. **Bindings and secrets**
+   - Confirm the Pages project has the `DB` D1 binding.
+   - Confirm `SESSION_SECRET` is set.
+   - If Turnstile is enabled, confirm `TURNSTILE_ENABLED=true`, `TURNSTILE_SECRET`, and `VITE_TURNSTILE_SITE_KEY` are all set consistently.
+2. **Schema state**
+   - Verify production D1 has applied all migrations.
+   - Check `schema_meta` values match the currently deployed app schema.
+3. **Cookie behavior**
+   - Open the deployed app on the production origin.
+   - Confirm sign-up/sign-in responses set the session cookie on the same origin.
+   - Confirm `GET /api/auth/session` succeeds after sign-in.
+4. **Clean-account sync smoke test**
+   - Sign up with a never-before-used email address.
+   - Run a first `bootstrap` and confirm the snapshot is empty for a fresh account.
+   - On device A, create at least one task/project and run sync.
+   - On device B, sign in with the same account and run `bootstrap` / `pull`.
+   - Confirm device B receives the same data.
+5. **Conflict smoke test**
+   - Edit the same record on two signed-in devices.
+   - Sync device A first, then sync device B.
+   - Confirm device B surfaces a conflict outcome instead of silently overwriting.
+6. **Diagnostics**
+   - Copy the sync diagnostics block from Settings after a successful run.
+   - If a request fails, confirm the diagnostics include the request ID, status code, server code, retry count, and stage.
+
+## Troubleshooting
+
+- If auth works locally but not in production, first inspect the session cookie on the deployed origin and confirm requests are still going to same-origin `/api/*`.
+- If sync reports schema blocking, compare the deployed app build against `schema_meta` in production D1.
+- If a retryable sync failure persists, use the Settings diagnostics export to capture the request ID and server code before investigating the Pages Functions logs.

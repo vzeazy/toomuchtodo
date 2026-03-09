@@ -72,6 +72,7 @@ const normalizeTask = (task: Partial<Task>): Task => ({
   tags: Array.isArray(task.tags) ? task.tags.filter((tag): tag is string => typeof tag === 'string') : [],
   updatedAt: typeof task.updatedAt === 'number' ? task.updatedAt : (typeof task.createdAt === 'number' ? task.createdAt : Date.now()),
   deletedAt: typeof task.deletedAt === 'number' ? task.deletedAt : null,
+  syncVersion: typeof task.syncVersion === 'number' ? task.syncVersion : null,
 });
 
 const dedupeThemes = (themes: ThemeDefinition[]) => {
@@ -89,6 +90,7 @@ const normalizeProject = (project: Partial<Project>): Project => ({
   parentId: typeof project.parentId === 'string' ? project.parentId : null,
   updatedAt: typeof project.updatedAt === 'number' ? project.updatedAt : Date.now(),
   deletedAt: typeof project.deletedAt === 'number' ? project.deletedAt : null,
+  syncVersion: typeof project.syncVersion === 'number' ? project.syncVersion : null,
 });
 
 const normalizeState = (parsed: Partial<AppStateData>): AppStateData => ({
@@ -120,6 +122,7 @@ let memoryState: AppStateData | null = null;
 let memorySyncMeta: SyncMeta | null = null;
 let memoryAuthSession: AuthSession | null = null;
 let syncStatus = 'idle';
+let syncRunPromise: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
 function getSharedState() {
@@ -184,6 +187,7 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       payload: project as unknown as Record<string, unknown>,
       deviceId: meta.deviceId,
       timestamp: ts,
+      baseVersion: typeof project.syncVersion === 'number' ? project.syncVersion : null,
     })),
     ...state.tasks.map((task) => ({
       id: uid('op'),
@@ -193,6 +197,7 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       payload: task as unknown as Record<string, unknown>,
       deviceId: meta.deviceId,
       timestamp: ts,
+      baseVersion: typeof task.syncVersion === 'number' ? task.syncVersion : null,
     })),
     {
       id: uid('op'),
@@ -202,8 +207,28 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       payload: state.settings as unknown as Record<string, unknown>,
       deviceId: meta.deviceId,
       timestamp: ts,
+      baseVersion: meta.settingsVersion,
     },
   ];
+};
+
+const resetSyncMetaForAccountBoundary = (meta: SyncMeta): SyncMeta => {
+  const defaults = createDefaultSyncMeta();
+  return {
+    ...defaults,
+    deviceId: meta.deviceId,
+    localSchemaVersion: meta.localSchemaVersion,
+  };
+};
+
+const mergeSyncMetaAfterRun = (resultMeta: SyncMeta, liveMeta: SyncMeta, startedPendingIds: string[]) => {
+  const startedSet = new Set(startedPendingIds);
+  const nextPendingIds = new Set(resultMeta.pendingOps.map((op) => op.id));
+  const appendedDuringRun = liveMeta.pendingOps.filter((op) => !startedSet.has(op.id) && !nextPendingIds.has(op.id));
+  return {
+    ...resultMeta,
+    pendingOps: [...resultMeta.pendingOps, ...appendedDuringRun],
+  };
 };
 
 export const useAppStore = () => {
@@ -245,9 +270,10 @@ export const useAppStore = () => {
         setSharedSyncMeta({ ...linked, mode: 'account', cloudLinked: true });
       }
       notifyListeners();
-    } catch {
+    } catch (error) {
       memoryAuthSession = null;
       notifyListeners();
+      throw error;
     }
   }, []);
 
@@ -277,7 +303,7 @@ export const useAppStore = () => {
     await authClient.signOut();
     memoryAuthSession = null;
     const localMeta = getSharedSyncMeta();
-    setSharedSyncMeta({ ...localMeta, mode: 'local', cloudLinked: false });
+    setSharedSyncMeta(resetSyncMetaForAccountBoundary(localMeta));
     notifyListeners();
   }, []);
 
@@ -296,19 +322,32 @@ export const useAppStore = () => {
   }, []);
 
   const runSyncNow = useCallback(async () => {
+    if (syncRunPromise) return syncRunPromise;
+
     const currentMeta = getSharedSyncMeta();
     if (!currentMeta.cloudLinked) return;
 
     updateSyncStatus('syncing');
-    try {
-      const { state: nextState, meta: nextMeta } = await runSyncOnce(getSharedState(), currentMeta);
-      setSharedSyncMeta(nextMeta);
-      setSharedState(nextState, { skipQueue: true });
+    const startedPendingIds = currentMeta.pendingOps.map((op) => op.id);
+
+    syncRunPromise = (async () => {
+      const result = await runSyncOnce(getSharedState(), currentMeta);
+      const liveMeta = getSharedSyncMeta();
+      const mergedMeta = mergeSyncMetaAfterRun(result.meta, liveMeta, startedPendingIds);
+      setSharedSyncMeta(mergedMeta);
+      setSharedState(result.state, { skipQueue: true });
+
+      if (result.error) {
+        updateSyncStatus('error');
+        throw result.error;
+      }
+
       updateSyncStatus('idle');
-    } catch {
-      updateSyncStatus('error');
-      throw new Error('Sync failed');
-    }
+    })().finally(() => {
+      syncRunPromise = null;
+    });
+
+    return syncRunPromise;
   }, []);
 
   const addTask = useCallback((
@@ -338,6 +377,7 @@ export const useAppStore = () => {
       tags: [],
       updatedAt: now,
       deletedAt: null,
+      syncVersion: null,
     };
 
     setSharedState((prev) => ({

@@ -8,6 +8,7 @@ export const json = (data: unknown, init: ResponseInit = {}) => {
 };
 
 export const id = (prefix: string) => `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`;
+export const REQUEST_ID_HEADER = 'x-request-id';
 
 const textEncoder = new TextEncoder();
 
@@ -76,6 +77,41 @@ export const clearSessionCookie = (env: Env) => {
 };
 
 export const now = () => Date.now();
+
+export const getRequestId = (request: Request) => request.headers.get(REQUEST_ID_HEADER) || id('req');
+
+export const withRequestId = (request: Request) => {
+  if (request.headers.get(REQUEST_ID_HEADER)) return request;
+  const headers = new Headers(request.headers);
+  headers.set(REQUEST_ID_HEADER, getRequestId(request));
+  return new Request(request, { headers });
+};
+
+export const errorJson = (
+  request: Request,
+  code: string,
+  init: ResponseInit,
+  options: { message?: string; retryable?: boolean; details?: unknown } = {},
+) => {
+  const requestId = getRequestId(request);
+  return json(
+    {
+      error: code,
+      code,
+      message: options.message || code,
+      requestId,
+      retryable: options.retryable ?? false,
+      details: options.details,
+    },
+    {
+      ...init,
+      headers: {
+        ...Object.fromEntries(new Headers(init.headers).entries()),
+        [REQUEST_ID_HEADER]: requestId,
+      },
+    },
+  );
+};
 
 export const isMutation = (method: string) => method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
 

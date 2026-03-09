@@ -15,6 +15,7 @@ export interface UserSession {
   sessionId: string;
   userId: string;
   email: string;
+  createdAt: number;
 }
 
 export interface SyncOperation {
@@ -25,4 +26,6 @@ export interface SyncOperation {
   payload: Record<string, unknown>;
   deviceId: string;
   timestamp: number;
+  baseVersion?: number | null;
+  version?: number | null;
 }

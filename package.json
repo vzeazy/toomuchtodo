@@ -8,6 +8,7 @@
     "dev:worker": "wrangler dev --config worker/wrangler.toml",
     "dev:all": "bash -lc 'pnpm dev & pnpm dev:worker'",
     "build": "vite build",
+    "test": "node --experimental-sqlite --import tsx --test test/**/*.test.ts",
     "preview": "vite preview",
     "migrate:d1:local": "wrangler d1 migrations apply too-much-to-do --local --config worker/wrangler.toml"
   },
@@ -23,6 +24,7 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.2.1",
+    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

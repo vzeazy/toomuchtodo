@@ -1,10 +1,11 @@
 import { authRoutes } from './routes/auth';
 import { syncRoutes } from './routes/sync';
 import { Env } from './types';
-import { isAllowedOrigin, json } from './lib';
+import { REQUEST_ID_HEADER, errorJson, isAllowedOrigin, json, withRequestId } from './lib';
 
 const withCors = (response: Response, request: Request, env: Env) => {
   const headers = new Headers(response.headers);
+  headers.set(REQUEST_ID_HEADER, request.headers.get(REQUEST_ID_HEADER) || headers.get(REQUEST_ID_HEADER) || '');
   const origin = request.headers.get('origin');
   if (origin && isAllowedOrigin(env, request)) {
     headers.set('access-control-allow-origin', origin);
@@ -60,11 +61,15 @@ const router = async (request: Request, env: Env): Promise<Response> => {
 };
 
 const fetchHandler = (request: Request, env: Env): Promise<Response> => {
-  return router(request, env)
-    .then((response) => withCors(response, request, env))
+  const requestWithId = withRequestId(request);
+  return router(requestWithId, env)
+    .then((response) => withCors(response, requestWithId, env))
     .catch((error) => withCors(
-      json({ error: 'internal_error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 }),
-      request,
+      errorJson(requestWithId, 'internal_error', { status: 500 }, {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        retryable: true,
+      }),
+      requestWithId,
       env,
     ));
 };

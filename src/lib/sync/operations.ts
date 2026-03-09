@@ -26,10 +26,12 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
         payload: withPayload(nextTask),
         deviceId: meta.deviceId,
         timestamp,
+        baseVersion: typeof prevTask?.syncVersion === 'number' ? prevTask.syncVersion : null,
       });
     }
   }
   for (const id of prevTasks.keys()) {
+    const prevTask = prevTasks.get(id);
     if (!nextTasks.has(id)) {
       ops.push({
         id: uid(),
@@ -39,6 +41,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
         payload: { deletedAt: timestamp },
         deviceId: meta.deviceId,
         timestamp,
+        baseVersion: typeof prevTask?.syncVersion === 'number' ? prevTask.syncVersion : null,
       });
     }
   }
@@ -56,10 +59,12 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
         payload: withPayload(nextProject),
         deviceId: meta.deviceId,
         timestamp,
+        baseVersion: typeof prevProject?.syncVersion === 'number' ? prevProject.syncVersion : null,
       });
     }
   }
   for (const id of prevProjects.keys()) {
+    const prevProject = prevProjects.get(id);
     if (!nextProjects.has(id)) {
       ops.push({
         id: uid(),
@@ -69,6 +74,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
         payload: { deletedAt: timestamp },
         deviceId: meta.deviceId,
         timestamp,
+        baseVersion: typeof prevProject?.syncVersion === 'number' ? prevProject.syncVersion : null,
       });
     }
   }
@@ -82,6 +88,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
       payload: withPayload(next.settings),
       deviceId: meta.deviceId,
       timestamp,
+      baseVersion: meta.settingsVersion,
     });
   }
 

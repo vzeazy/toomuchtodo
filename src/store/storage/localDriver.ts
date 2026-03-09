@@ -93,6 +93,10 @@ export class LocalOnlyDriver implements StorageDriver {
       ...createDefaultSyncMeta(),
       ...raw,
       pendingOps: Array.isArray(raw.pendingOps) ? raw.pendingOps : [],
+      lastConflicts: Array.isArray(raw.lastConflicts) ? raw.lastConflicts : [],
+      lastSyncDiagnostics: raw.lastSyncDiagnostics
+        ? { ...createDefaultSyncMeta().lastSyncDiagnostics, ...raw.lastSyncDiagnostics }
+        : createDefaultSyncMeta().lastSyncDiagnostics,
     };
 
     if (!normalized.deviceId) normalized.deviceId = createDefaultSyncMeta().deviceId;
