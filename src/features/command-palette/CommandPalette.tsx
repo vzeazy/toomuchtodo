@@ -65,7 +65,7 @@ export const CommandPalette: React.FC<{
               onClose();
             }
           }}
-          placeholder="Run a command... (s:search, t:new task, timer:25 focus)"
+          placeholder="Run a command... (s:search, t:new task, note:idea, timer:25 focus)"
           className="w-full border-b soft-divider bg-transparent px-5 py-4 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
         <div className="max-h-[50vh] overflow-y-auto p-2">

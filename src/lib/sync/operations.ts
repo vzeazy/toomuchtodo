@@ -79,6 +79,39 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
     }
   }
 
+  const prevNotes = new Map(prev.notes.map((note) => [note.id, note]));
+  const nextNotes = new Map(next.notes.map((note) => [note.id, note]));
+  for (const [id, nextNote] of nextNotes) {
+    const prevNote = prevNotes.get(id);
+    if (!prevNote || JSON.stringify(prevNote) !== JSON.stringify(nextNote)) {
+      ops.push({
+        id: uid(),
+        entity: 'note',
+        action: 'upsert',
+        recordId: id,
+        payload: withPayload(nextNote),
+        deviceId: meta.deviceId,
+        timestamp,
+        baseVersion: typeof prevNote?.syncVersion === 'number' ? prevNote.syncVersion : null,
+      });
+    }
+  }
+  for (const id of prevNotes.keys()) {
+    const prevNote = prevNotes.get(id);
+    if (!nextNotes.has(id)) {
+      ops.push({
+        id: uid(),
+        entity: 'note',
+        action: 'delete',
+        recordId: id,
+        payload: { deletedAt: timestamp },
+        deviceId: meta.deviceId,
+        timestamp,
+        baseVersion: typeof prevNote?.syncVersion === 'number' ? prevNote.syncVersion : null,
+      });
+    }
+  }
+
   if (JSON.stringify(prev.settings) !== JSON.stringify(next.settings)) {
     ops.push({
       id: uid(),

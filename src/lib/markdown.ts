@@ -62,3 +62,16 @@ export const renderMarkdown = (value: string) => {
     return `<p>${renderLinesWithBreaks(lines)}</p>`;
   }).join('');
 };
+
+export const getMarkdownExcerpt = (value: string, maxLength = 180) => {
+  const normalized = value
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[`*_>#-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return 'No notes yet.';
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+};

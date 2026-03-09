@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { PictureInPicture2 } from 'lucide-react';
-import { Project, Task, TaskListMode, AppView } from '../../types';
+import { Project, Task, TaskListMode, AppView, Note, NoteScopeType } from '../../types';
 import { TaskListView } from './TaskListView';
 import {
   TaskPanelPictureInPictureBridge,
@@ -8,6 +8,8 @@ import {
 } from './TaskPanelPictureInPictureBridge';
 import { getProjectSubtreeIds } from '../../lib/projectTree';
 import { collectTaskIdsWithAncestors, getTaskDescendantIds } from './taskTree';
+import { ScopedNotesSection } from '../notes/ScopedNotesSection';
+import { matchesScope, sortNotes } from '../notes/noteUtils';
 
 export interface PanelState {
   id: string;
@@ -20,12 +22,14 @@ export const TaskPanelWrapper: React.FC<{
   panel: PanelState;
   tasks: Task[];
   projects: Project[];
+  notes: Note[];
   settings: { taskListMode: TaskListMode;[key: string]: any };
   themeVariables: Record<string, string>;
   selectedArea: string | null;
   expandedTaskId: string | null;
   setExpandedTaskId: (id: string | null) => void;
   addTask: (title: string, status: string, area: string, projectId: string | null, dueDate: string | null, forceLast?: boolean, parentId?: string | null, dayPart?: 'morning' | 'afternoon' | 'evening' | null) => Task;
+  addNote: (input: { scopeType: NoteScopeType; scopeRef: string | null }) => Note;
   setTaskListMode: (mode: TaskListMode) => void;
   toggleStar: (id: string) => void;
   toggleComplete: (id: string) => void;
@@ -35,7 +39,11 @@ export const TaskPanelWrapper: React.FC<{
   moveTaskAfter: (sourceId: string, targetId: string, parentId: string | null) => void;
   toggleTaskCollapsed: (id: string) => void;
   deleteTask: (id: string) => void;
+  updateNote: (id: string, updates: Partial<Note>) => void;
+  deleteNote: (id: string) => void;
+  toggleNotePinned: (id: string) => void;
   setTaskToEditInModal: (task: Task | null) => void;
+  onOpenNotes: (scopeType: NoteScopeType, scopeRef: string | null, noteId?: string | null) => void;
   onOpenDate?: (dateStr: string) => void;
   onBack?: () => void;
   onClose?: () => void;
@@ -44,12 +52,14 @@ export const TaskPanelWrapper: React.FC<{
   panel,
   tasks,
   projects,
+  notes,
   settings,
   themeVariables,
   selectedArea,
   expandedTaskId,
   setExpandedTaskId,
   addTask,
+  addNote,
   setTaskListMode,
   toggleStar,
   toggleComplete,
@@ -59,7 +69,11 @@ export const TaskPanelWrapper: React.FC<{
   moveTaskAfter,
   toggleTaskCollapsed,
   deleteTask,
+  updateNote,
+  deleteNote,
+  toggleNotePinned,
   setTaskToEditInModal,
+  onOpenNotes,
   onOpenDate,
   onBack,
   onClose,
@@ -114,6 +128,43 @@ export const TaskPanelWrapper: React.FC<{
       };
     }, [panel.dateStr]);
 
+    const visibleNotes = useMemo(() => sortNotes(notes.filter((note) => note.deletedAt === null)), [notes]);
+    const scopedNotes = useMemo(() => {
+      const sections: Array<{ title: string; scopeType: NoteScopeType; scopeRef: string | null; notes: Note[] }> = [];
+
+      if (panel.projectId) {
+        sections.push({
+          title: 'Project Notes',
+          scopeType: 'project',
+          scopeRef: panel.projectId,
+          notes: visibleNotes.filter((note) => matchesScope(note, 'project', panel.projectId)),
+        });
+      }
+
+      if (panel.view === 'day' || panel.view === 'today') {
+        const scopeRef = panel.view === 'today' ? todayDateStr : panel.dateStr;
+        if (scopeRef) {
+          sections.push({
+            title: 'Day Notes',
+            scopeType: 'day',
+            scopeRef,
+            notes: visibleNotes.filter((note) => matchesScope(note, 'day', scopeRef)),
+          });
+        }
+      }
+
+      if (selectedArea) {
+        sections.push({
+          title: 'Area Notes',
+          scopeType: 'area',
+          scopeRef: selectedArea,
+          notes: visibleNotes.filter((note) => matchesScope(note, 'area', selectedArea)),
+        });
+      }
+
+      return sections;
+    }, [panel.dateStr, panel.projectId, panel.view, selectedArea, todayDateStr, visibleNotes]);
+
     const headerTitle = useMemo(() => {
       if (panel.projectId) return projects.find((project) => project.id === panel.projectId)?.name || 'Project';
       if (panel.view === 'day' && selectedPlannerDay) return `${selectedPlannerDay.title}, ${selectedPlannerDay.subtitle}`;
@@ -133,36 +184,52 @@ export const TaskPanelWrapper: React.FC<{
     }, [panel.view, projects, selectedArea, selectedPlannerDay, panel.projectId]);
 
     const child = (
-      <TaskListView
-        tasks={taskListTasks}
-        allTasks={tasks}
-        projects={projects}
-        headerTitle={headerTitle}
-        currentView={panel.view === 'today' ? 'day' : panel.view}
-        selectedArea={selectedArea}
-        selectedProjectId={panel.projectId}
-        expandedTaskId={expandedTaskId}
-        itemCount={filteredTasks.length}
-        matchedTaskIds={matchedTaskIds}
-        taskListMode={settings.taskListMode}
-        groupDayViewByPart={Boolean(settings.groupDayViewByPart)}
-        backLabel={panel.view === 'day' ? 'Back to week' : undefined}
-        onExpandTask={setExpandedTaskId}
-        onAddTask={(title, dayPart) => addTask(title, isDayLikeView ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, isDayLikeView ? (panel.view === 'today' ? todayDateStr : panel.dateStr) : null, false, null, isDayLikeView ? (dayPart ?? null) : null)}
-        onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : (parentTask.projectId ? 'open' : 'next')) : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
-        onTaskListModeChange={setTaskListMode}
-        onToggleStar={toggleStar}
-        onToggleComplete={toggleComplete}
-        onUpdateTask={updateTask}
-        onReorderTasks={reorderTasks}
-        onMoveTaskBefore={moveTaskBefore}
-        onMoveTaskAfter={moveTaskAfter}
-        onToggleTaskCollapsed={toggleTaskCollapsed}
-        onDeleteTask={deleteTask}
-        onOpenTask={setTaskToEditInModal as any}
-        onOpenDate={onOpenDate}
-        onBack={onBack}
-      />
+      <div>
+        {scopedNotes.map((section) => (
+          <ScopedNotesSection
+            key={`${section.scopeType}:${section.scopeRef ?? 'dashboard'}`}
+            title={section.title}
+            scopeType={section.scopeType}
+            scopeRef={section.scopeRef}
+            notes={section.notes}
+            onAddNote={addNote}
+            onUpdateNote={updateNote}
+            onDeleteNote={deleteNote}
+            onTogglePinned={toggleNotePinned}
+            onOpenAllNotes={onOpenNotes}
+          />
+        ))}
+        <TaskListView
+          tasks={taskListTasks}
+          allTasks={tasks}
+          projects={projects}
+          headerTitle={headerTitle}
+          currentView={panel.view === 'today' ? 'day' : panel.view}
+          selectedArea={selectedArea}
+          selectedProjectId={panel.projectId}
+          expandedTaskId={expandedTaskId}
+          itemCount={filteredTasks.length}
+          matchedTaskIds={matchedTaskIds}
+          taskListMode={settings.taskListMode}
+          groupDayViewByPart={Boolean(settings.groupDayViewByPart)}
+          backLabel={panel.view === 'day' ? 'Back to week' : undefined}
+          onExpandTask={setExpandedTaskId}
+          onAddTask={(title, dayPart) => addTask(title, isDayLikeView ? 'scheduled' : (panel.projectId && panel.view === 'all') ? 'open' : (panel.view === 'all' || panel.view === 'focus' || panel.view === 'planner') ? 'next' : panel.view as any, selectedArea || 'Personal', panel.projectId, isDayLikeView ? (panel.view === 'today' ? todayDateStr : panel.dateStr) : null, false, null, isDayLikeView ? (dayPart ?? null) : null)}
+          onAddSubtask={(parentTask, title) => addTask(title, parentTask.status === 'completed' ? (parentTask.dueDate ? 'scheduled' : (parentTask.projectId ? 'open' : 'next')) : parentTask.status, parentTask.area, parentTask.projectId, parentTask.dueDate, false, parentTask.id, parentTask.dayPart)}
+          onTaskListModeChange={setTaskListMode}
+          onToggleStar={toggleStar}
+          onToggleComplete={toggleComplete}
+          onUpdateTask={updateTask}
+          onReorderTasks={reorderTasks}
+          onMoveTaskBefore={moveTaskBefore}
+          onMoveTaskAfter={moveTaskAfter}
+          onToggleTaskCollapsed={toggleTaskCollapsed}
+          onDeleteTask={deleteTask}
+          onOpenTask={setTaskToEditInModal as any}
+          onOpenDate={onOpenDate}
+          onBack={onBack}
+        />
+      </div>
     );
 
     const handleTogglePictureInPicture = async () => {

@@ -31,6 +31,7 @@ const VALID_VIEWS = new Set<AppView>([
   'day',
   'settings',
   'search',
+  'notes',
 ]);
 
 const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

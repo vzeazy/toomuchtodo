@@ -30,6 +30,19 @@ const baseTask = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const baseNote = (overrides: Record<string, unknown> = {}) => ({
+  id: 'note-shared-id',
+  title: 'First synced note',
+  body: 'Initial note body',
+  scopeType: 'dashboard',
+  scopeRef: null,
+  pinned: false,
+  createdAt: 1_700_000_000_000,
+  updatedAt: 1_700_000_000_100,
+  deletedAt: null,
+  ...overrides,
+});
+
 test('turnstile-enabled sign-up creates a session in the same request', async () => {
   const harness = createPagesApiHarness({ TURNSTILE_ENABLED: 'true' });
   const originalFetch = globalThis.fetch;
@@ -224,6 +237,15 @@ test('sign-in, session refresh, sign-out, bootstrap, push, pull, and first-link 
             timestamp: 1_700_000_000_100,
           },
           {
+            id: 'device-a-note-op',
+            entity: 'note',
+            action: 'upsert',
+            recordId: 'note-1',
+            payload: baseNote({ id: 'note-1', title: 'Shared note', scopeType: 'project', scopeRef: 'project-1', pinned: true }),
+            deviceId: 'device-a',
+            timestamp: 1_700_000_000_110,
+          },
+          {
             id: 'device-a-settings-op',
             entity: 'settings',
             action: 'upsert',
@@ -236,7 +258,7 @@ test('sign-in, session refresh, sign-out, bootstrap, push, pull, and first-link 
       },
     });
     assert.equal(firstLinkPush.response.status, 200);
-    assert.equal(firstLinkPush.data.accepted, 3);
+    assert.equal(firstLinkPush.data.accepted, 4);
 
     const signOut = await deviceA.requestJson('/api/auth/sign-out', { method: 'POST' });
     assert.equal(signOut.response.status, 200);
@@ -253,10 +275,11 @@ test('sign-in, session refresh, sign-out, bootstrap, push, pull, and first-link 
     assert.equal(refreshedSession.response.status, 200);
     assert.equal(refreshedSession.data.user.email, email);
 
-    const bootstrapB = await deviceB.requestJson<{ cursor: string; snapshot: { projects: Array<{ name: string }>; tasks: Array<{ title: string }>; settings: { activeThemeId: string } } }>('/api/sync/bootstrap');
+    const bootstrapB = await deviceB.requestJson<{ cursor: string; snapshot: { projects: Array<{ name: string }>; tasks: Array<{ title: string }>; notes: Array<{ title: string }>; settings: { activeThemeId: string } } }>('/api/sync/bootstrap');
     assert.equal(bootstrapB.response.status, 200);
     assert.deepEqual(bootstrapB.data.snapshot.projects.map((project) => project.name), ['Home']);
     assert.deepEqual(bootstrapB.data.snapshot.tasks.map((task) => task.title), ['Synced from device A']);
+    assert.deepEqual(bootstrapB.data.snapshot.notes.map((note) => note.title), ['Shared note']);
     assert.equal(bootstrapB.data.snapshot.settings.activeThemeId, 'aurora');
 
     const deviceAAgain = harness.createClient();
@@ -412,9 +435,10 @@ test('replaying the same push op id is idempotent and does not duplicate change 
 
 test('first-link merge keeps local tasks while hydrating remote tasks and projects', () => {
   const localState = {
-    version: 2,
+    version: 3,
     tasks: [baseTask({ id: 'local-task', title: 'Local task', syncVersion: null })],
     projects: [],
+    notes: [baseNote({ id: 'local-note', title: 'Local note', syncVersion: null })],
     settings: {
       activeThemeId: 'local-theme',
       plannerWidthMode: 'container',
@@ -442,11 +466,13 @@ test('first-link merge keeps local tasks while hydrating remote tasks and projec
   const merged = mergeFirstLinkState(localState, {
     tasks: [baseTask({ id: 'remote-task', title: 'Remote task', syncVersion: 2 })],
     projects: [{ id: 'remote-project', name: 'Remote project', parentId: null, updatedAt: 1_700_000_003_000, deletedAt: null, syncVersion: 1 }],
+    notes: [baseNote({ id: 'remote-note', title: 'Remote note', syncVersion: 1 })],
     settings: { ...localState.settings, activeThemeId: 'remote-theme', taskListMode: 'list' },
   });
 
   assert.deepEqual(merged.tasks.map((task) => task.id).sort(), ['local-task', 'remote-task']);
   assert.deepEqual(merged.projects.map((project) => project.id), ['remote-project']);
+  assert.deepEqual(merged.notes.map((note) => note.id).sort(), ['local-note', 'remote-note']);
   assert.equal(merged.settings.activeThemeId, 'local-theme');
   assert.equal(merged.settings.taskListMode, 'outline');
 });

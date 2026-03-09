@@ -15,6 +15,7 @@ import {
   Columns,
   Eye,
   EyeOff,
+  FileText,
   Folder,
   Inbox,
   Keyboard,
@@ -48,9 +49,10 @@ import {
 } from '../lib/taskListExchange';
 import { getThemeVariables } from '../lib/theme';
 import { createExportPayload, useAppStore } from '../store/useAppStore';
-import { AppDataExport, AppView, PlannerWidthMode, Task, TaskListMode, TaskListImportMode, TaskListScope, TaskStatus } from '../types';
+import { AppDataExport, AppView, NoteScopeType, PlannerWidthMode, Task, TaskListMode, TaskListImportMode, TaskListScope, TaskStatus } from '../types';
 import { useAppLocation } from '../lib/useAppLocation';
 import { CommandItem, CommandPalette } from '../features/command-palette/CommandPalette';
+import { NotesDashboardView } from '../features/notes/NotesDashboardView';
 import { PlannerView } from '../features/planner/PlannerView';
 import { SearchView } from '../features/search/SearchView';
 import { SettingsView } from '../features/settings/SettingsView';
@@ -85,6 +87,7 @@ export default function App() {
   const {
     tasks,
     projects,
+    notes,
     themes,
     settings,
     activeTheme,
@@ -97,6 +100,10 @@ export default function App() {
     addProject,
     updateProject,
     deleteProject,
+    addNote,
+    updateNote,
+    deleteNote,
+    toggleNotePinned,
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,
@@ -150,6 +157,11 @@ export default function App() {
   const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileToolbarMenu, setShowMobileToolbarMenu] = useState(false);
+  const [notesViewFocus, setNotesViewFocus] = useState<{ scopeType: NoteScopeType | 'all'; scopeRef: string | null; noteId: string | null }>({
+    scopeType: 'all',
+    scopeRef: null,
+    noteId: null,
+  });
 
   const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
   const themeVariables = useMemo(() => getThemeVariables(activeTheme), [activeTheme]);
@@ -169,7 +181,7 @@ export default function App() {
 
   const handleViewSelect = useCallback((event: React.MouseEvent | undefined, view: AppView, projectId: string | null = null, dateStr: string | null = null) => {
     const isMulti = event && (event.shiftKey || event.metaKey || event.ctrlKey);
-    if (isMulti && currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search') {
+    if (isMulti && currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && currentView !== 'notes') {
       // Prevent duplicates
       if (currentView === view && selectedProjectId === projectId && selectedPlannerDate === dateStr) return;
       setAdditionalPanels((prev) => {
@@ -222,6 +234,12 @@ export default function App() {
   const searchResults = useMemo(() => {
     return searchTasks(tasks, projects, searchQuery, { includeCompleted: settings.showCompletedTasks });
   }, [projects, searchQuery, tasks, settings.showCompletedTasks]);
+  const activeNotes = useMemo(() => notes.filter((note) => note.deletedAt === null), [notes]);
+
+  const openNotesDashboard = useCallback((scopeType: NoteScopeType | 'all' = 'all', scopeRef: string | null = null, noteId: string | null = null) => {
+    setNotesViewFocus({ scopeType, scopeRef, noteId });
+    handleViewSelect(undefined, 'notes');
+  }, [handleViewSelect]);
 
 
 
@@ -244,9 +262,19 @@ export default function App() {
     { id: 'goto-inbox', label: 'Go to Inbox', hint: 'Navigation', run: () => handleViewSelect(undefined, 'inbox') },
     { id: 'goto-next', label: 'Go to Next', hint: 'Navigation', run: () => handleViewSelect(undefined, 'next') },
     { id: 'goto-planner', label: 'Go to Planner', hint: 'Navigation', run: () => handleViewSelect(undefined, 'planner') },
+    { id: 'goto-notes', label: 'Open Notes', hint: 'Navigation', run: () => openNotesDashboard() },
     { id: 'goto-search', label: 'Open Search', hint: 'Navigation', run: () => { handleViewSelect(undefined, 'search'); sidebarSearchRef.current?.focus(); } },
     { id: 'goto-settings', label: 'Open Settings', hint: 'Navigation', run: () => handleViewSelect(undefined, 'settings') },
     { id: 'new-task', label: 'Focus New Task Input', hint: 'Task', run: () => newTaskInputRef.current?.focus() },
+    {
+      id: 'new-dashboard-note',
+      label: 'New Dashboard Note',
+      hint: 'Note',
+      run: () => {
+        const note = addNote({ scopeType: 'dashboard', scopeRef: null });
+        openNotesDashboard('dashboard', null, note.id);
+      },
+    },
     {
       id: 'toggle-theme', label: 'Cycle Theme', hint: 'Theme', run: () => {
         const currentIndex = themes.findIndex((theme) => theme.id === settings.activeThemeId);
@@ -254,11 +282,11 @@ export default function App() {
         setActiveTheme(nextTheme.id);
       }
     },
-    { id: 'export-data', label: 'Export Data', hint: 'Data', run: () => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer })) },
+    { id: 'export-data', label: 'Export Data', hint: 'Data', run: () => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, notes, settings, themes, timer })) },
     { id: 'shortcuts', label: 'Open Keyboard Shortcuts', hint: 'Help', run: () => setShowShortcutsModal(true) },
     { id: 'timer-25', label: 'Start 25m Timer', hint: 'Timer', run: () => startTimer(25 * 60, null, 'Focus Session') },
     { id: 'timer-toggle-minimize', label: timer.minimized ? 'Expand Timer Overlay' : 'Minimize Timer Overlay', hint: 'Timer', run: () => toggleTimerMinimized(), disabled: !timer.active },
-  ], [handleViewSelect, projects, settings, tasks, themes, timer, setActiveTheme, startTimer, toggleTimerMinimized]);
+  ], [addNote, handleViewSelect, notes, openNotesDashboard, projects, settings, tasks, themes, timer, setActiveTheme, startTimer, toggleTimerMinimized]);
 
   const resolveCommandPaletteQuery = useCallback((rawQuery: string): CommandItem[] | null => {
     const query = rawQuery.trim();
@@ -309,6 +337,24 @@ export default function App() {
       ];
     }
 
+    if (lower.startsWith('note:') || lower.startsWith('no:')) {
+      const title = query.slice(query.indexOf(':') + 1).trim();
+      if (!title) {
+        return [{ id: 'note-help', label: 'Type after note: to create a dashboard note', hint: 'Note', run: () => undefined, disabled: true }];
+      }
+      return [
+        {
+          id: 'note-add-dashboard',
+          label: `Create note: ${title}`,
+          hint: 'Note · Dashboard',
+          run: () => {
+            const note = addNote({ scopeType: 'dashboard', scopeRef: null, title });
+            openNotesDashboard('dashboard', null, note.id);
+          },
+        },
+      ];
+    }
+
     const isTimerPrefix = lower.startsWith('timer:') || lower.startsWith('ti:');
     if (isTimerPrefix) {
       const rest = query.includes(':') ? query.slice(query.indexOf(':') + 1).trim() : '';
@@ -354,6 +400,7 @@ export default function App() {
 
     return null;
   }, [
+    addNote,
     addTask,
     handleViewSelect,
     pauseTimer,
@@ -369,6 +416,7 @@ export default function App() {
     timer.minimized,
     timer.paused,
     toggleTimerMinimized,
+    openNotesDashboard,
   ]);
 
   const plannerWidthOptions: Array<{ id: PlannerWidthMode; label: string; icon: typeof Columns }> = [
@@ -644,7 +692,7 @@ export default function App() {
             </div>
           )}
 
-          {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
+          {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && currentView !== 'notes' && (
             <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
               {(['list', 'outline'] as TaskListMode[]).map((mode) => {
                 const Icon = mode === 'list' ? LayoutList : AlignLeft;
@@ -703,7 +751,7 @@ export default function App() {
             <button type="button" onClick={() => handleViewSelect(undefined, 'planner')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView === 'planner' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
               <CalendarDays size={16} />
             </button>
-            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
+            <button type="button" onClick={(e) => handleViewSelect(e, 'next')} className={`flex h-[30px] w-[34px] items-center justify-center rounded-md transition-all ${currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && currentView !== 'notes' ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>
               <List size={16} />
             </button>
           </div>
@@ -781,7 +829,7 @@ export default function App() {
                   setSearchQuery(event.target.value);
                   handleViewSelect(undefined, 'search');
                 }}
-                placeholder="Search tasks, notes, tags..."
+                placeholder="Search tasks..."
                 className="w-full bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
               />
             </div>
@@ -802,6 +850,14 @@ export default function App() {
           <SidebarItem icon={Clock} label="Waiting" count={counts.waiting} active={currentView === 'waiting' || additionalPanels.some(p => p.view === 'waiting')} onClick={(e) => handleViewSelect(e, 'waiting')} onDrop={(id) => updateTask(id, { status: 'waiting' })} />
           <SidebarItem icon={CalendarClock} label="Scheduled" count={counts.scheduled} active={currentView === 'scheduled' || additionalPanels.some(p => p.view === 'scheduled')} onClick={(e) => handleViewSelect(e, 'scheduled')} onDrop={(id) => updateTask(id, { status: 'scheduled' })} />
           <SidebarItem icon={Coffee} label="Someday" count={counts.someday} active={currentView === 'someday' || additionalPanels.some(p => p.view === 'someday')} onClick={(e) => handleViewSelect(e, 'someday')} onDrop={(id) => updateTask(id, { status: 'someday' })} />
+          <div className="my-4 border-t soft-divider" />
+          <SidebarItem
+            icon={FileText}
+            label="Notes"
+            count={activeNotes.length}
+            active={currentView === 'notes'}
+            onClick={() => openNotesDashboard()}
+          />
 
           <div className="my-4">
             <div className="mb-2 flex items-center justify-between px-3">
@@ -943,7 +999,7 @@ export default function App() {
                 themes={themes}
                 activeThemeId={settings.activeThemeId}
                 onSetActiveTheme={setActiveTheme}
-                onExportData={() => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, settings, themes, timer }))}
+                onExportData={() => downloadJson(`too-much-to-do-export-${new Date().toISOString().slice(0, 10)}.json`, createExportPayload({ version: 1, tasks, projects, notes, settings, themes, timer }))}
                 onImportData={(payload) => {
                   if (!isAppExport(payload)) return;
                   importAppData(payload);
@@ -989,19 +1045,33 @@ export default function App() {
               <SearchView query={searchQuery} tasks={searchResults} projects={projects} onOpenTask={setTaskToEditInModal} />
             )}
 
-            {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && (
+            {currentView === 'notes' && (
+              <NotesDashboardView
+                notes={activeNotes}
+                projects={projects}
+                focusState={notesViewFocus}
+                onAddNote={addNote}
+                onUpdateNote={updateNote}
+                onDeleteNote={deleteNote}
+                onTogglePinned={toggleNotePinned}
+              />
+            )}
+
+            {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && currentView !== 'notes' && (
               <>
                 {additionalPanels.length === 0 ? (
                   <TaskPanelWrapper
                     panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
                     tasks={tasks}
                     projects={projects}
+                    notes={activeNotes}
                     settings={settings}
                     themeVariables={themeVariables}
                     selectedArea={selectedArea}
                     expandedTaskId={expandedTaskId}
                     setExpandedTaskId={setExpandedTaskId}
                     addTask={addTask}
+                    addNote={addNote}
                     setTaskListMode={setTaskListMode}
                     toggleStar={toggleStar}
                     toggleComplete={toggleComplete}
@@ -1011,7 +1081,11 @@ export default function App() {
                     moveTaskAfter={moveTaskAfter}
                     toggleTaskCollapsed={toggleTaskCollapsed}
                     deleteTask={deleteTask}
+                    updateNote={updateNote}
+                    deleteNote={deleteNote}
+                    toggleNotePinned={toggleNotePinned}
                     setTaskToEditInModal={setTaskToEditInModal}
+                    onOpenNotes={openNotesDashboard}
                     onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
                     onBack={currentView === 'day' ? () => handleViewSelect(undefined, 'planner') : undefined}
                     isSingle={true}
@@ -1022,12 +1096,14 @@ export default function App() {
                       panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
                       tasks={tasks}
                       projects={projects}
+                      notes={activeNotes}
                       settings={settings}
                       themeVariables={themeVariables}
                       selectedArea={selectedArea}
                       expandedTaskId={expandedTaskId}
                       setExpandedTaskId={setExpandedTaskId}
                       addTask={addTask}
+                      addNote={addNote}
                       setTaskListMode={setTaskListMode}
                       toggleStar={toggleStar}
                       toggleComplete={toggleComplete}
@@ -1037,7 +1113,11 @@ export default function App() {
                       moveTaskAfter={moveTaskAfter}
                       toggleTaskCollapsed={toggleTaskCollapsed}
                       deleteTask={deleteTask}
+                      updateNote={updateNote}
+                      deleteNote={deleteNote}
+                      toggleNotePinned={toggleNotePinned}
                       setTaskToEditInModal={setTaskToEditInModal}
+                      onOpenNotes={openNotesDashboard}
                     />
                     {additionalPanels.map((panel) => (
                       <TaskPanelWrapper
@@ -1045,12 +1125,14 @@ export default function App() {
                         panel={panel}
                         tasks={tasks}
                         projects={projects}
+                        notes={activeNotes}
                         settings={settings}
                         themeVariables={themeVariables}
                         selectedArea={selectedArea}
                         expandedTaskId={expandedTaskId}
                         setExpandedTaskId={setExpandedTaskId}
                         addTask={addTask}
+                        addNote={addNote}
                         setTaskListMode={setTaskListMode}
                         toggleStar={toggleStar}
                         toggleComplete={toggleComplete}
@@ -1060,7 +1142,11 @@ export default function App() {
                         moveTaskAfter={moveTaskAfter}
                         toggleTaskCollapsed={toggleTaskCollapsed}
                         deleteTask={deleteTask}
+                        updateNote={updateNote}
+                        deleteNote={deleteNote}
+                        toggleNotePinned={toggleNotePinned}
                         setTaskToEditInModal={setTaskToEditInModal}
+                        onOpenNotes={openNotesDashboard}
                         onClose={() => setAdditionalPanels((prev) => prev.filter((p) => p.id !== panel.id))}
                       />
                     ))}

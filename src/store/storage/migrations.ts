@@ -1,7 +1,7 @@
 import { AppStateData, AppSettings, SyncDiagnostics, SyncMeta, ThemeDefinition, TimerState } from '../../types';
 import { builtInThemes } from '../../themes/builtInThemes';
 
-export const APP_SCHEMA_VERSION = 2;
+export const APP_SCHEMA_VERSION = 3;
 
 const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
@@ -55,6 +55,7 @@ const createDefaultState = (): AppStateData => ({
   version: APP_SCHEMA_VERSION,
   tasks: [],
   projects: [],
+  notes: [],
   settings: INITIAL_SETTINGS,
   themes: builtInThemes,
   timer: INITIAL_TIMER_STATE,
@@ -100,6 +101,12 @@ const migrateV1toV2 = (state: AppStateData): AppStateData => {
   };
 };
 
+const migrateV2toV3 = (state: AppStateData): AppStateData => ({
+  ...state,
+  version: APP_SCHEMA_VERSION,
+  notes: Array.isArray(state.notes) ? state.notes : [],
+});
+
 export const createDefaultSyncDiagnosticsState = createDefaultSyncDiagnostics;
 
 export const runStateMigrations = (input: PersistedEnvelope | AppStateData | null | undefined): PersistedEnvelope => {
@@ -117,6 +124,11 @@ export const runStateMigrations = (input: PersistedEnvelope | AppStateData | nul
   if (currentVersion < 2) {
     state = migrateV1toV2(state);
     currentVersion = 2;
+  }
+
+  if (currentVersion < 3) {
+    state = migrateV2toV3(state);
+    currentVersion = 3;
   }
 
   return {

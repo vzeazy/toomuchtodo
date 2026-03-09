@@ -59,6 +59,18 @@ const toProjectRow = (record: Record<string, unknown>) => ({
   deletedAt: typeof record.deletedAt === 'number' ? Number(record.deletedAt) : null,
 });
 
+const toNoteRow = (record: Record<string, unknown>) => ({
+  id: String(record.id || ''),
+  title: String(record.title || 'Untitled note'),
+  body: String(record.body || ''),
+  scopeType: String(record.scopeType || 'dashboard'),
+  scopeRef: record.scopeRef ? String(record.scopeRef) : null,
+  pinned: Number(Boolean(record.pinned)),
+  createdAt: Number(record.createdAt || now()),
+  updatedAt: Number(record.updatedAt || now()),
+  deletedAt: typeof record.deletedAt === 'number' ? Number(record.deletedAt) : null,
+});
+
 const registerDevice = async (env: Env, userId: string, deviceId: string) => {
   const ts = now();
   await env.DB.prepare(
@@ -99,6 +111,19 @@ const projectRowToRecord = (row: any) => ({
   syncVersion: Number(row.version),
 });
 
+const noteRowToRecord = (row: any) => ({
+  id: row.id,
+  title: row.title,
+  body: row.body,
+  scopeType: row.scope_type,
+  scopeRef: row.scope_ref,
+  pinned: Boolean(row.pinned),
+  createdAt: Number(row.created_at),
+  updatedAt: Number(row.updated_at),
+  deletedAt: row.deleted_at ? Number(row.deleted_at) : null,
+  syncVersion: Number(row.version),
+});
+
 const readCurrentRecord = async (
   env: Env,
   userId: string,
@@ -117,6 +142,13 @@ const readCurrentRecord = async (
       .bind(userId, recordId)
       .first<any>();
     return row ? { version: Number(row.version), record: projectRowToRecord(row) } : { version: null, record: null };
+  }
+
+  if (entity === 'note') {
+    const row = await env.DB.prepare('SELECT * FROM notes WHERE user_id = ? AND id = ?')
+      .bind(userId, recordId)
+      .first<any>();
+    return row ? { version: Number(row.version), record: noteRowToRecord(row) } : { version: null, record: null };
   }
 
   const row = await env.DB.prepare('SELECT payload, version FROM settings WHERE user_id = ? AND id = ?')
@@ -240,6 +272,44 @@ const pushOne = async (env: Env, userId: string, op: SyncOperation) => {
         .bind(project.id || op.recordId, userId, project.name, project.color, project.parentId, project.updatedAt, project.deletedAt, nextVersion)
         .run();
     }
+  } else if (op.entity === 'note') {
+    if (op.action === 'delete') {
+      if (!current.record) {
+        return { accepted: true, conflict: null as PushConflict | null, opId };
+      }
+      changePayload = { deletedAt: ts };
+      await env.DB.prepare('UPDATE notes SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
+        .bind(ts, ts, nextVersion, op.recordId, userId)
+        .run();
+    } else {
+      const note = toNoteRow(op.payload || {});
+      changePayload = {
+        id: note.id || op.recordId,
+        title: note.title,
+        body: note.body,
+        scopeType: note.scopeType,
+        scopeRef: note.scopeRef,
+        pinned: Boolean(note.pinned),
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+        deletedAt: note.deletedAt,
+      };
+      await env.DB.prepare(
+        `INSERT INTO notes (id, user_id, title, body, scope_type, scope_ref, pinned, created_at, updated_at, deleted_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, id) DO UPDATE SET
+         title=excluded.title,
+         body=excluded.body,
+         scope_type=excluded.scope_type,
+         scope_ref=excluded.scope_ref,
+         pinned=excluded.pinned,
+         updated_at=excluded.updated_at,
+         deleted_at=excluded.deleted_at,
+         version=excluded.version`,
+      )
+        .bind(note.id || op.recordId, userId, note.title, note.body, note.scopeType, note.scopeRef, note.pinned, note.createdAt, note.updatedAt, note.deletedAt, nextVersion)
+        .run();
+    }
   } else {
     if (op.action !== 'upsert') {
       return { accepted: true, conflict: null as PushConflict | null, opId };
@@ -269,9 +339,10 @@ const pushOne = async (env: Env, userId: string, op: SyncOperation) => {
 };
 
 const readSnapshot = async (env: Env, userId: string) => {
-  const [tasksRes, projectsRes, settingsRow] = await Promise.all([
+  const [tasksRes, projectsRes, notesRes, settingsRow] = await Promise.all([
     env.DB.prepare('SELECT * FROM tasks WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all(),
     env.DB.prepare('SELECT * FROM projects WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all(),
+    env.DB.prepare('SELECT * FROM notes WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all(),
     env.DB.prepare('SELECT payload, version FROM settings WHERE user_id = ? AND id = ? AND deleted_at IS NULL').bind(userId, 'settings').first<{ payload: string; version: number }>(),
   ]);
 
@@ -304,9 +375,22 @@ const readSnapshot = async (env: Env, userId: string) => {
     syncVersion: Number(row.version),
   }));
 
+  const notes = (notesRes.results || []).map((row: any) => ({
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    scopeType: row.scope_type,
+    scopeRef: row.scope_ref,
+    pinned: Boolean(row.pinned),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+    deletedAt: row.deleted_at ? Number(row.deleted_at) : null,
+    syncVersion: Number(row.version),
+  }));
+
   const settings = settingsRow ? JSON.parse(settingsRow.payload) : {};
 
-  return { tasks, projects, settings, settingsVersion: settingsRow ? Number(settingsRow.version) : null };
+  return { tasks, projects, notes, settings, settingsVersion: settingsRow ? Number(settingsRow.version) : null };
 };
 
 const applySecurity = (env: Env, request: Request, session: UserSession) => {

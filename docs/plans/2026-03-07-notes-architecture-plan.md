@@ -11,6 +11,23 @@ Add a unified notes system that supports:
 
 The implementation should fit the app's current local-first architecture, preserve optional cloud sync, and reuse the existing markdown editing pattern already used for task notes.
 
+## Implementation Progress
+
+### Milestone update: implemented
+
+- Status: Completed on 2026-03-09.
+- Phase 1 shipped with a first-class `Note` entity, local persistence, store CRUD, a dedicated `Notes` navigation entry, a notes dashboard, and scoped note sections for project, area, and day contexts.
+- Phase 2 shipped with local schema v3, note sync operations, worker note storage, and bootstrap/push/pull support for notes.
+- Phase 3 shipped with dashboard search/filtering, preview excerpts, pinning UX, and command palette note shortcuts.
+
+### Implementation nuances
+
+- The rollout uses a dedicated `Notes` sidebar entry immediately.
+- Multiple notes per scope are supported.
+- Scoped note creation happens from project/day/area contexts, while the dashboard creates dashboard notes by default.
+- Global app search remains task-focused for now; notes search is implemented inside the notes dashboard as the primary MVP search surface.
+- Local delete behavior follows the app's existing record-removal pattern while retaining `deletedAt` in the note model and sync payloads for compatibility with remote tombstones.
+
 ## Date
 
 - Prepared: 2026-03-07

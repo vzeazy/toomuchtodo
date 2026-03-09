@@ -12,9 +12,9 @@ export const SearchView: React.FC<{
     <div className="mb-10">
       <div className="section-kicker mb-2 text-[10px] font-bold uppercase text-[var(--accent)]">Search</div>
       <h1 className="text-[34px] font-semibold leading-[1.02] tracking-[-0.04em] text-[var(--text-primary)]">Search</h1>
-      <div className="mt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
-        {query ? `${tasks.length} results for "${query}"` : 'Focus the sidebar search to query tasks, notes, tags, and projects'}
-      </div>
+        <div className="mt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
+          {query ? `${tasks.length} task results for "${query}"` : 'Focus the sidebar search to query tasks, tags, and projects'}
+        </div>
     </div>
 
     <div className="panel-surface rounded-[28px]">

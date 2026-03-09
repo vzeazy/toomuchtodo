@@ -9,7 +9,7 @@ database_id = "a255a273-95bd-4248-aee3-53fdd299fa0c"
 migrations_dir = "migrations"
 
 [vars]
-APP_SCHEMA_LATEST = "2"
-APP_SCHEMA_MIN_SUPPORTED = "2"
+APP_SCHEMA_LATEST = "3"
+APP_SCHEMA_MIN_SUPPORTED = "3"
 SESSION_COOKIE_NAME = "tmtd_session"
 SESSION_COOKIE_SAME_SITE = "Lax"

@@ -1,10 +1,11 @@
 export type TaskStatus = 'inbox' | 'open' | 'next' | 'waiting' | 'scheduled' | 'someday' | 'completed' | 'deleted';
 
-export type AppView = TaskStatus | 'focus' | 'today' | 'trash' | 'all' | 'planner' | 'day' | 'settings' | 'search';
+export type AppView = TaskStatus | 'focus' | 'today' | 'trash' | 'all' | 'planner' | 'day' | 'settings' | 'search' | 'notes';
 
 export type PlannerWidthMode = 'container' | 'wide' | 'full';
 export type TaskListMode = 'list' | 'outline';
 export type DayPart = 'morning' | 'afternoon' | 'evening';
+export type NoteScopeType = 'dashboard' | 'project' | 'area' | 'day';
 
 export interface Project {
   id: string;
@@ -30,6 +31,19 @@ export interface Task {
   collapsed: boolean;
   createdAt: number;
   tags: string[];
+  updatedAt: number;
+  deletedAt: number | null;
+  syncVersion?: number | null;
+}
+
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+  scopeType: NoteScopeType;
+  scopeRef: string | null;
+  pinned: boolean;
+  createdAt: number;
   updatedAt: number;
   deletedAt: number | null;
   syncVersion?: number | null;
@@ -92,6 +106,7 @@ export interface AppStateData {
   version: number;
   tasks: Task[];
   projects: Project[];
+  notes: Note[];
   settings: AppSettings;
   themes: ThemeDefinition[];
   timer: TimerState;
@@ -99,7 +114,7 @@ export interface AppStateData {
 
 export interface SyncOperation {
   id: string;
-  entity: 'task' | 'project' | 'settings';
+  entity: 'task' | 'project' | 'note' | 'settings';
   action: 'upsert' | 'delete';
   recordId: string;
   payload: Record<string, unknown>;

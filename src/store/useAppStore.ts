@@ -8,6 +8,8 @@ import {
   AppDataExport,
   AppSettings,
   AppStateData,
+  Note,
+  NoteScopeType,
   PlannerWidthMode,
   Project,
   SyncMeta,
@@ -30,6 +32,7 @@ const INITIAL_PROJECTS: Project[] = [];
 const LEGACY_BOOTSTRAP_PROJECT_COLORS = new Map<string, string>();
 
 const INITIAL_TASKS: Task[] = [];
+const INITIAL_NOTES: Note[] = [];
 
 const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
@@ -75,6 +78,43 @@ const normalizeTask = (task: Partial<Task>): Task => ({
   syncVersion: typeof task.syncVersion === 'number' ? task.syncVersion : null,
 });
 
+const getDefaultNoteTitle = (scopeType: NoteScopeType, scopeRef: string | null) => {
+  switch (scopeType) {
+    case 'project':
+      return 'Untitled project note';
+    case 'area':
+      return scopeRef ? `${scopeRef} note` : 'Untitled area note';
+    case 'day':
+      return scopeRef ? `Notes for ${scopeRef}` : 'Untitled day note';
+    case 'dashboard':
+    default:
+      return 'Untitled note';
+  }
+};
+
+const normalizeNote = (note: Partial<Note>): Note => {
+  const scopeType: NoteScopeType = note.scopeType === 'project'
+    || note.scopeType === 'area'
+    || note.scopeType === 'day'
+    ? note.scopeType
+    : 'dashboard';
+  const scopeRef = typeof note.scopeRef === 'string' ? note.scopeRef : null;
+  const createdAt = typeof note.createdAt === 'number' ? note.createdAt : Date.now();
+
+  return {
+    id: typeof note.id === 'string' ? note.id : uid('note'),
+    title: typeof note.title === 'string' && note.title.trim() ? note.title : getDefaultNoteTitle(scopeType, scopeRef),
+    body: typeof note.body === 'string' ? note.body : '',
+    scopeType,
+    scopeRef,
+    pinned: Boolean(note.pinned),
+    createdAt,
+    updatedAt: typeof note.updatedAt === 'number' ? note.updatedAt : createdAt,
+    deletedAt: typeof note.deletedAt === 'number' ? note.deletedAt : null,
+    syncVersion: typeof note.syncVersion === 'number' ? note.syncVersion : null,
+  };
+};
+
 const dedupeThemes = (themes: ThemeDefinition[]) => {
   const seen = new Map<string, ThemeDefinition>();
   for (const theme of themes) seen.set(theme.id, theme);
@@ -97,6 +137,7 @@ const normalizeState = (parsed: Partial<AppStateData>): AppStateData => ({
   version: CURRENT_VERSION,
   tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map(normalizeTask) : INITIAL_TASKS,
   projects: Array.isArray(parsed.projects) ? parsed.projects.map(normalizeProject) : INITIAL_PROJECTS,
+  notes: Array.isArray(parsed.notes) ? parsed.notes.map(normalizeNote) : INITIAL_NOTES,
   settings: {
     activeThemeId: parsed.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
     plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
@@ -170,6 +211,7 @@ function setSharedState(
 
 const touchTask = (task: Task): Task => ({ ...task, updatedAt: Date.now() });
 const touchProject = (project: Project): Project => ({ ...project, updatedAt: Date.now() });
+const touchNote = (note: Note): Note => ({ ...note, updatedAt: Date.now() });
 
 const updateSyncStatus = (value: string) => {
   syncStatus = value;
@@ -181,7 +223,7 @@ const hasCustomLocalSettings = (state: AppStateData) => (
 );
 
 const hasLocalSyncSeedData = (state: AppStateData) => (
-  state.tasks.length > 0 || state.projects.length > 0 || hasCustomLocalSettings(state)
+  state.tasks.length > 0 || state.projects.length > 0 || state.notes.length > 0 || hasCustomLocalSettings(state)
 );
 
 const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
@@ -206,6 +248,16 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       deviceId: meta.deviceId,
       timestamp: ts,
       baseVersion: typeof task.syncVersion === 'number' ? task.syncVersion : null,
+    })),
+    ...state.notes.map((note) => ({
+      id: uid('op'),
+      entity: 'note' as const,
+      action: 'upsert' as const,
+      recordId: note.id,
+      payload: note as unknown as Record<string, unknown>,
+      deviceId: meta.deviceId,
+      timestamp: ts,
+      baseVersion: typeof note.syncVersion === 'number' ? note.syncVersion : null,
     })),
     ...(hasCustomLocalSettings(state) ? [{
       id: uid('op'),
@@ -539,6 +591,58 @@ export const useAppStore = () => {
     });
   }, []);
 
+  const addNote = useCallback((input: { scopeType: NoteScopeType; scopeRef?: string | null; title?: string; body?: string; pinned?: boolean }) => {
+    const now = Date.now();
+    const note = normalizeNote({
+      id: uid('note'),
+      title: input.title,
+      body: input.body,
+      scopeType: input.scopeType,
+      scopeRef: input.scopeRef ?? null,
+      pinned: input.pinned ?? false,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      syncVersion: null,
+    });
+
+    setSharedState((prev) => ({
+      ...prev,
+      notes: [note, ...prev.notes],
+    }));
+
+    return note;
+  }, []);
+
+  const updateNote = useCallback((id: string, updates: Partial<Note>) => {
+    setSharedState((prev) => ({
+      ...prev,
+      notes: prev.notes.map((note) => (
+        note.id === id
+          ? touchNote(normalizeNote({ ...note, ...updates, id: note.id }))
+          : note
+      )),
+    }));
+  }, []);
+
+  const deleteNote = useCallback((id: string) => {
+    setSharedState((prev) => ({
+      ...prev,
+      notes: prev.notes.filter((note) => note.id !== id),
+    }));
+  }, []);
+
+  const toggleNotePinned = useCallback((id: string) => {
+    setSharedState((prev) => ({
+      ...prev,
+      notes: prev.notes.map((note) => (
+        note.id === id
+          ? touchNote({ ...note, pinned: !note.pinned })
+          : note
+      )),
+    }));
+  }, []);
+
   const setActiveTheme = useCallback((themeId: string) => {
     setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, activeThemeId: themeId } }));
   }, []);
@@ -557,6 +661,7 @@ export const useAppStore = () => {
       version: CURRENT_VERSION,
       tasks: Array.isArray(imported.tasks) ? imported.tasks.map(normalizeTask) : [],
       projects: Array.isArray(imported.projects) ? imported.projects.map(normalizeProject) : [],
+      notes: Array.isArray(imported.notes) ? imported.notes.map(normalizeNote) : [],
       settings: {
         activeThemeId: imported.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
         plannerWidthMode: (imported.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
@@ -776,6 +881,31 @@ export const useAppStore = () => {
     return state.themes.find((theme) => theme.id === state.settings.activeThemeId) || builtInThemes[0];
   }, [state.themes, state.settings.activeThemeId]);
 
+  const getNotesByScope = useCallback((scopeType: NoteScopeType, scopeRef: string | null) => (
+    [...state.notes]
+      .filter((note) => note.deletedAt === null && note.scopeType === scopeType && note.scopeRef === scopeRef)
+      .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt)
+  ), [state.notes]);
+
+  const getRecentNotes = useCallback((limit = 10) => (
+    [...state.notes]
+      .filter((note) => note.deletedAt === null)
+      .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt)
+      .slice(0, limit)
+  ), [state.notes]);
+
+  const searchNotes = useCallback((query: string) => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const visibleNotes = state.notes.filter((note) => note.deletedAt === null);
+    if (!normalizedQuery) {
+      return [...visibleNotes].sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt);
+    }
+
+    return visibleNotes
+      .filter((note) => `${note.title} ${note.body} ${note.scopeType} ${note.scopeRef || ''}`.toLowerCase().includes(normalizedQuery))
+      .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt);
+  }, [state.notes]);
+
   return {
     ...state,
     activeTheme,
@@ -797,6 +927,13 @@ export const useAppStore = () => {
     addProject,
     updateProject,
     deleteProject,
+    addNote,
+    updateNote,
+    deleteNote,
+    toggleNotePinned,
+    getNotesByScope,
+    getRecentNotes,
+    searchNotes,
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,

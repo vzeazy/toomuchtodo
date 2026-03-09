@@ -1,6 +1,6 @@
 import { ApiError } from './http';
 import { syncApi } from './client';
-import { AppStateData, Project, SyncConflict, SyncDiagnostics, SyncMeta, SyncOperation, Task } from '../../types';
+import { AppStateData, Note, Project, SyncConflict, SyncDiagnostics, SyncMeta, SyncOperation, Task } from '../../types';
 
 const mergeByIdPreferLocal = <T extends { id: string }>(localRecords: T[], remoteRecords: T[]) => {
   const merged = new Map(remoteRecords.map((record) => [record.id, record]));
@@ -10,11 +10,12 @@ const mergeByIdPreferLocal = <T extends { id: string }>(localRecords: T[], remot
 
 export const mergeFirstLinkState = (
   localState: AppStateData,
-  remoteSnapshot: Pick<AppStateData, 'tasks' | 'projects' | 'settings'>,
+  remoteSnapshot: Pick<AppStateData, 'tasks' | 'projects' | 'notes' | 'settings'>,
 ) => ({
   ...localState,
   tasks: mergeByIdPreferLocal(localState.tasks, remoteSnapshot.tasks),
   projects: mergeByIdPreferLocal(localState.projects, remoteSnapshot.projects),
+  notes: mergeByIdPreferLocal(localState.notes, remoteSnapshot.notes),
   settings: { ...remoteSnapshot.settings, ...localState.settings },
 });
 
@@ -59,6 +60,26 @@ const applyChanges = (state: AppStateData, meta: SyncMeta, changes: SyncOperatio
         projects: exists
           ? nextState.projects.map((item) => (item.id === change.recordId ? ({ ...item, ...project, id: item.id }) : item))
           : [...nextState.projects, project],
+      };
+      continue;
+    }
+
+    if (change.entity === 'note') {
+      if (change.action === 'delete') {
+        nextState = { ...nextState, notes: nextState.notes.filter((note) => note.id !== change.recordId) };
+        continue;
+      }
+
+      const note = {
+        ...(change.payload as Note),
+        syncVersion: typeof change.version === 'number' ? change.version : ((change.payload as Note).syncVersion ?? null),
+      };
+      const exists = nextState.notes.some((item) => item.id === change.recordId);
+      nextState = {
+        ...nextState,
+        notes: exists
+          ? nextState.notes.map((item) => (item.id === change.recordId ? ({ ...item, ...note, id: item.id }) : item))
+          : [...nextState.notes, note],
       };
       continue;
     }
@@ -141,6 +162,7 @@ const buildDiagnostics = (
 const applyBootstrapVersions = (ops: SyncOperation[], snapshot: AppStateData, settingsVersion: number | null) => {
   const taskVersions = new Map(snapshot.tasks.map((task) => [task.id, task.syncVersion ?? null]));
   const projectVersions = new Map(snapshot.projects.map((project) => [project.id, project.syncVersion ?? null]));
+  const noteVersions = new Map(snapshot.notes.map((note) => [note.id, note.syncVersion ?? null]));
 
   return ops.map((op) => {
     if (op.entity === 'task') {
@@ -148,6 +170,9 @@ const applyBootstrapVersions = (ops: SyncOperation[], snapshot: AppStateData, se
     }
     if (op.entity === 'project') {
       return { ...op, baseVersion: projectVersions.get(op.recordId) ?? op.baseVersion ?? null };
+    }
+    if (op.entity === 'note') {
+      return { ...op, baseVersion: noteVersions.get(op.recordId) ?? op.baseVersion ?? null };
     }
     if (op.entity === 'settings') {
       return { ...op, baseVersion: settingsVersion };
@@ -215,6 +240,7 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
           ...nextState,
           tasks: bootstrap.data.snapshot.tasks,
           projects: bootstrap.data.snapshot.projects,
+          notes: bootstrap.data.snapshot.notes,
           settings: { ...nextState.settings, ...bootstrap.data.snapshot.settings },
         };
       } else {

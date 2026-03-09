@@ -99,7 +99,7 @@ export const TaskListView: React.FC<{
       });
     }, [tasks]);
     const topLevelListTasks = useMemo(() => listTasks.filter((task) => !task.parentId), [listTasks]);
-    const visibleListTasks = useMemo(() => currentView === 'day' ? listTasks : topLevelListTasks, [currentView, listTasks, topLevelListTasks]);
+    const visibleListTasks = useMemo(() => topLevelListTasks, [topLevelListTasks]);
 
     const childCounts = useMemo(() => {
       const counts = new Map<string, number>();
