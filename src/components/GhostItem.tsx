@@ -29,6 +29,8 @@ export const GhostItem: React.FC<{
     }
   };
 
+  const showTabHint = isFocused && value.trim().length > 0 && indentMode === 'none';
+
   return (
     <div className={`group/ghost flex items-center gap-2 rounded px-2 py-1.5 transition-all ${isFocused ? 'bg-[rgba(255,255,255,0.03)]' : 'hover:bg-[rgba(255,255,255,0.02)]'} ${className}`} style={{ paddingLeft: indentMode === 'indent' ? '32px' : undefined }}>
       <Plus size={iconSize} className={`transition-colors ${isFocused ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] group-hover/ghost:text-[var(--text-secondary)]'}`} />
@@ -41,8 +43,14 @@ export const GhostItem: React.FC<{
         onBlur={() => setIsFocused(false)}
         ref={inputRef}
         placeholder={placeholder}
-        className={`w-full border-none bg-transparent p-0 font-medium tracking-[-0.01em] ${textSizeClass} outline-none transition-all placeholder:font-normal focus:ring-0 ${isFocused ? 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' : 'cursor-pointer text-[var(--text-primary)]/90 placeholder:text-[var(--text-muted)]'}`}
+        className={`min-w-0 flex-1 border-none bg-transparent p-0 font-medium tracking-[-0.01em] ${textSizeClass} outline-none transition-all placeholder:font-normal focus:ring-0 ${isFocused ? 'text-[var(--text-primary)] placeholder:text-[var(--text-muted)]' : 'cursor-pointer text-[var(--text-primary)]/90 placeholder:text-[var(--text-muted)]'}`}
       />
+      {showTabHint && (
+        <span className="flex shrink-0 animate-[fadeIn_0.15s_ease] items-center gap-1 text-[10px] text-[var(--text-muted)]">
+          <kbd className="rounded bg-[var(--panel-bg)] px-1 py-0.5 text-[9px] font-bold text-[var(--text-muted)] shadow-[0_1px_0_1px_var(--border-color)]">Tab</kbd>
+          to nest
+        </span>
+      )}
     </div>
   );
 };

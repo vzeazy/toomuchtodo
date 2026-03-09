@@ -449,12 +449,24 @@ export default function App() {
             setSelectedArea(nextIndex === AREAS.length ? null : AREAS[nextIndex]);
           }
           break;
+        case ',':
+          event.preventDefault();
+          handleViewSelect(undefined, 'settings');
+          break;
+        case 'h':
+          event.preventDefault();
+          setShowCompletedTasks(!settings.showCompletedTasks);
+          break;
+        case 't':
+          event.preventDefault();
+          handleViewSelect(undefined, 'day', null, todayDateKey);
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [addTask, selectedArea, toggleSidebarCollapsed]);
+  }, [addTask, handleViewSelect, selectedArea, settings.showCompletedTasks, setShowCompletedTasks, todayDateKey, toggleSidebarCollapsed]);
 
   useEffect(() => {
     const syncSidebarWithViewport = () => {
