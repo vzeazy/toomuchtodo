@@ -1,4 +1,4 @@
-# Self-Hosting (Cloudflare Pages + Worker + D1)
+# Self-Hosting (Cloudflare Pages Functions + D1)
 
 ## 1. Prerequisites
 - Cloudflare account
@@ -31,41 +31,35 @@ wrangler d1 migrations apply too-much-to-do --remote --config worker/wrangler.to
 ## 5. Local dev
 ```bash
 pnpm dev
-pnpm dev:worker
-# or run both
-pnpm dev:all
 ```
 
-Set frontend API base URL:
+Set frontend API base URL only if you are also running the separate Worker locally:
 ```bash
 # .env.local
 VITE_API_BASE_URL=http://127.0.0.1:8787
 ```
 
+For normal Pages Functions deployment, do not set `VITE_API_BASE_URL`. The app should call same-origin `/api/...`.
+
 ## 6. Deploy
 ```bash
-wrangler deploy --config worker/wrangler.toml
 pnpm build
-# deploy dist/ to Cloudflare Pages
+# deploy dist/ to Cloudflare Pages with the `functions/` directory included
 ```
 
-Set the frontend production API base URL to your Worker origin:
-```bash
-# Cloudflare Pages build env
-VITE_API_BASE_URL=https://too-much-to-do-api.<your-subdomain>.workers.dev
-```
+In the Cloudflare Pages project, add these bindings/variables for Functions:
+- D1 binding: `DB`
+- Secret: `SESSION_SECRET`
+- Optional secret: `TURNSTILE_SECRET`
+- Optional variable: `TURNSTILE_ENABLED=true`
+- Optional variable: `APP_SCHEMA_LATEST=2`
+- Optional variable: `APP_SCHEMA_MIN_SUPPORTED=2`
+- Optional variable: `SESSION_COOKIE_NAME=tmtd_session`
+- Optional variable: `SESSION_COOKIE_SAME_SITE=Lax`
 
-If Pages and Worker are on different origins, also configure the Worker:
-```toml
-# worker/wrangler.toml
-[vars]
-ALLOWED_ORIGINS = "https://<your-pages-site>.pages.dev"
-SESSION_COOKIE_SAME_SITE = "None"
-# optional when sharing cookies across subdomains on a custom apex:
-# SESSION_COOKIE_DOMAIN = ".example.com"
-```
+If you previously set `VITE_API_BASE_URL` to `https://api.do.webme.ca` or any other external API origin, remove it from Pages and redeploy so the frontend falls back to same-origin `/api/...`.
 
 ## Notes
 - Local-only mode still works with no account and no worker.
 - Sync schema compatibility is enforced by `/api/sync/bootstrap` and `/api/sync/pull`.
-- If you keep auth and API on the same host, leave `SESSION_COOKIE_SAME_SITE = "Lax"` and you do not need `ALLOWED_ORIGINS`.
+- Same-origin Pages Functions avoids the CORS and cookie issues that come with a separate Worker hostname.
