@@ -48,6 +48,7 @@ import {
 import { getThemeVariables } from '../lib/theme';
 import { createExportPayload, useAppStore } from '../store/useAppStore';
 import { AppDataExport, AppView, PlannerWidthMode, Task, TaskListMode, TaskListImportMode, TaskListScope, TaskStatus } from '../types';
+import { useAppLocation } from '../lib/useAppLocation';
 import { CommandItem, CommandPalette } from '../features/command-palette/CommandPalette';
 import { PlannerView } from '../features/planner/PlannerView';
 import { SearchView } from '../features/search/SearchView';
@@ -128,15 +129,18 @@ export default function App() {
     runSyncNow,
   } = useAppStore();
 
-  const [currentView, setCurrentView] = useState<AppView>('planner');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const {
+    view: currentView,
+    projectId: selectedProjectId,
+    dateStr: selectedPlannerDate,
+    weekOffset: currentWeekOffset,
+    navigate,
+  } = useAppLocation();
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showAreaMenu, setShowAreaMenu] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
-  const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
-  const [selectedPlannerDate, setSelectedPlannerDate] = useState<string | null>(null);
   const [taskToEditInModal, setTaskToEditInModal] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -170,13 +174,11 @@ export default function App() {
         return [...prev, { id: Math.random().toString(), view, projectId, dateStr }];
       });
     } else {
-      setCurrentView(view);
-      setSelectedProjectId(projectId);
-      setSelectedPlannerDate(dateStr);
+      navigate({ view, projectId, dateStr });
       setAdditionalPanels([]);
       collapseSidebarForMobileNavigation();
     }
-  }, [collapseSidebarForMobileNavigation, currentView, selectedProjectId, selectedPlannerDate]);
+  }, [collapseSidebarForMobileNavigation, currentView, navigate, selectedProjectId, selectedPlannerDate]);
 
   const newTaskInputRef = useRef<HTMLInputElement>(null);
   const sidebarSearchRef = useRef<HTMLInputElement>(null);
@@ -191,13 +193,11 @@ export default function App() {
   }, [currentView, selectedPlannerDate]);
 
   const shiftSelectedDay = useCallback((delta: number) => {
-    setSelectedPlannerDate((prev) => {
-      const base = prev ? new Date(`${prev}T00:00:00`) : new Date();
-      base.setHours(0, 0, 0, 0);
-      base.setDate(base.getDate() + delta);
-      return formatDateKey(base);
-    });
-  }, []);
+    const base = selectedPlannerDate ? new Date(`${selectedPlannerDate}T00:00:00`) : new Date();
+    base.setHours(0, 0, 0, 0);
+    base.setDate(base.getDate() + delta);
+    navigate({ view: 'day', projectId: null, dateStr: formatDateKey(base) });
+  }, [navigate, selectedPlannerDate]);
 
   const counts = useMemo(() => {
     let activeTasks = tasks;
@@ -255,7 +255,7 @@ export default function App() {
     { id: 'shortcuts', label: 'Open Keyboard Shortcuts', hint: 'Help', run: () => setShowShortcutsModal(true) },
     { id: 'timer-25', label: 'Start 25m Timer', hint: 'Timer', run: () => startTimer(25 * 60, null, 'Focus Session') },
     { id: 'timer-toggle-minimize', label: timer.minimized ? 'Expand Timer Overlay' : 'Minimize Timer Overlay', hint: 'Timer', run: () => toggleTimerMinimized(), disabled: !timer.active },
-  ], [projects, settings, tasks, themes, timer, setActiveTheme, startTimer, toggleTimerMinimized]);
+  ], [handleViewSelect, projects, settings, tasks, themes, timer, setActiveTheme, startTimer, toggleTimerMinimized]);
 
   const resolveCommandPaletteQuery = useCallback((rawQuery: string): CommandItem[] | null => {
     const query = rawQuery.trim();
@@ -514,10 +514,9 @@ export default function App() {
     setAdditionalPanels((prev) => prev.filter((panel) => panel.projectId !== projectId));
 
     if (selectedProjectId === projectId) {
-      setSelectedProjectId(null);
-      if (currentView === 'all') setCurrentView('next');
+      navigate(currentView === 'all' ? { view: 'next', projectId: null, dateStr: null } : { projectId: null });
     }
-  }, [currentView, deleteProject, projects, selectedProjectId, tasks]);
+  }, [currentView, deleteProject, navigate, projects, selectedProjectId, tasks]);
 
   return (
     <div className="app-frame flex h-screen flex-col select-none" style={themeVariables}>
@@ -570,7 +569,7 @@ export default function App() {
               className={`cursor-pointer ${(currentView === 'planner' || currentView === 'day') ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`}
               size={14}
               onClick={() => {
-                if (currentView === 'planner' && currentWeekOffset > -100) setCurrentWeekOffset((value) => value - 1);
+                if (currentView === 'planner' && currentWeekOffset > -100) navigate({ weekOffset: currentWeekOffset - 1 });
                 else if (currentView === 'day') shiftSelectedDay(-1);
               }}
             />
@@ -578,12 +577,12 @@ export default function App() {
               className={`cursor-pointer ${(currentView === 'planner' || currentView === 'day') ? 'hover:text-[var(--text-primary)]' : 'opacity-20'}`}
               size={14}
               onClick={() => {
-                if (currentView === 'planner' && currentWeekOffset < 100) setCurrentWeekOffset((value) => value + 1);
+                if (currentView === 'planner' && currentWeekOffset < 100) navigate({ weekOffset: currentWeekOffset + 1 });
                 else if (currentView === 'day') shiftSelectedDay(1);
               }}
             />
-            {currentWeekOffset !== 0 && currentView === 'planner' && <button type="button" onClick={() => setCurrentWeekOffset(0)} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
-            {currentView === 'day' && <button type="button" onClick={() => setSelectedPlannerDate(formatDateKey(new Date()))} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
+            {currentWeekOffset !== 0 && currentView === 'planner' && <button type="button" onClick={() => navigate({ weekOffset: 0 })} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
+            {currentView === 'day' && <button type="button" onClick={() => navigate({ view: 'day', projectId: null, dateStr: todayDateKey })} className="ml-1 text-[10px] font-bold uppercase text-[var(--accent)] hover:underline">Today</button>}
             {currentView === 'planner' && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] lg:ml-3">{weekRangeLabel}</span>}
             {currentView === 'day' && selectedDayLabel && <span className="ml-2 min-w-0 truncate px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)] lg:ml-3">{selectedDayLabel}</span>}
           </div>
@@ -871,7 +870,7 @@ export default function App() {
           </div>
 
           <div className="mt-auto border-t soft-divider pt-4">
-            <SidebarItem icon={Settings} label="Settings" active={currentView === 'settings'} onClick={() => { setCurrentView('settings'); collapseSidebarForMobileNavigation(); }} />
+            <SidebarItem icon={Settings} label="Settings" active={currentView === 'settings'} onClick={() => { navigate({ view: 'settings', projectId: null, dateStr: null }); collapseSidebarForMobileNavigation(); }} />
           </div>
         </aside>
 
@@ -894,11 +893,9 @@ export default function App() {
                 onAddTask={(title, dueDate) => addTask(title, dueDate ? 'scheduled' : 'next', selectedArea || 'Personal', null, dueDate || null)}
                 onAddProjectTask={(title, projectId) => addTask(title, 'open', selectedArea || 'Personal', projectId, null)}
                 onOpenTask={setTaskToEditInModal}
-                onOpenProject={(projectId) => { setSelectedProjectId(projectId); setCurrentView('all'); collapseSidebarForMobileNavigation(); }}
+                onOpenProject={(projectId) => { navigate({ view: 'all', projectId, dateStr: null }); collapseSidebarForMobileNavigation(); }}
                 onOpenDay={(dateStr) => {
-                  setSelectedPlannerDate(dateStr);
-                  setSelectedProjectId(null);
-                  setCurrentView('day');
+                  navigate({ view: 'day', projectId: null, dateStr });
                   collapseSidebarForMobileNavigation();
                 }}
                 onToggleHideEmptyProjects={toggleHideEmptyProjectsInPlanner}
