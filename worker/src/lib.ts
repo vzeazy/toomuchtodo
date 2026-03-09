@@ -45,14 +45,34 @@ export const readCookie = (request: Request, name: string): string | null => {
   return null;
 };
 
+const normalizeSameSite = (value?: string | null) => {
+  const normalized = (value || 'Lax').trim().toLowerCase();
+  if (normalized === 'none') return 'None';
+  if (normalized === 'strict') return 'Strict';
+  return 'Lax';
+};
+
+const getCookieAttrs = (env: Env, maxAgeSeconds: number) => {
+  const attrs = [
+    'Path=/',
+    'HttpOnly',
+    'Secure',
+    `SameSite=${normalizeSameSite(env.SESSION_COOKIE_SAME_SITE)}`,
+    `Max-Age=${maxAgeSeconds}`,
+  ];
+  const domain = (env.SESSION_COOKIE_DOMAIN || '').trim();
+  if (domain) attrs.push(`Domain=${domain}`);
+  return attrs.join('; ');
+};
+
 export const buildSessionCookie = (env: Env, token: string, maxAgeSeconds = 60 * 60 * 24 * 30) => {
   const name = env.SESSION_COOKIE_NAME || 'tmtd_session';
-  return `${name}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+  return `${name}=${encodeURIComponent(token)}; ${getCookieAttrs(env, maxAgeSeconds)}`;
 };
 
 export const clearSessionCookie = (env: Env) => {
   const name = env.SESSION_COOKIE_NAME || 'tmtd_session';
-  return `${name}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+  return `${name}=; ${getCookieAttrs(env, 0)}`;
 };
 
 export const now = () => Date.now();
@@ -69,6 +89,25 @@ export const assertSameOrigin = (request: Request) => {
   } catch {
     return false;
   }
+};
+
+export const getAllowedOrigins = (env: Env) => {
+  return (env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+};
+
+export const isAllowedOrigin = (env: Env, request: Request) => {
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+
+  const allowedOrigins = getAllowedOrigins(env);
+  if (allowedOrigins.length > 0) {
+    return allowedOrigins.includes(origin);
+  }
+
+  return assertSameOrigin(request);
 };
 
 const rateMap = new Map<string, { count: number; resetAt: number }>();

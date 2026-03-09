@@ -49,6 +49,23 @@ pnpm build
 # deploy dist/ to Cloudflare Pages
 ```
 
+Set the frontend production API base URL to your Worker origin:
+```bash
+# Cloudflare Pages build env
+VITE_API_BASE_URL=https://too-much-to-do-api.<your-subdomain>.workers.dev
+```
+
+If Pages and Worker are on different origins, also configure the Worker:
+```toml
+# worker/wrangler.toml
+[vars]
+ALLOWED_ORIGINS = "https://<your-pages-site>.pages.dev"
+SESSION_COOKIE_SAME_SITE = "None"
+# optional when sharing cookies across subdomains on a custom apex:
+# SESSION_COOKIE_DOMAIN = ".example.com"
+```
+
 ## Notes
 - Local-only mode still works with no account and no worker.
 - Sync schema compatibility is enforced by `/api/sync/bootstrap` and `/api/sync/pull`.
+- If you keep auth and API on the same host, leave `SESSION_COOKIE_SAME_SITE = "Lax"` and you do not need `ALLOWED_ORIGINS`.

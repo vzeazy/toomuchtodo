@@ -1,12 +1,12 @@
 import { authRoutes } from './routes/auth';
 import { syncRoutes } from './routes/sync';
 import { Env } from './types';
-import { json } from './lib';
+import { isAllowedOrigin, json } from './lib';
 
-const withCors = (response: Response, request: Request) => {
+const withCors = (response: Response, request: Request, env: Env) => {
   const headers = new Headers(response.headers);
   const origin = request.headers.get('origin');
-  if (origin) {
+  if (origin && isAllowedOrigin(env, request)) {
     headers.set('access-control-allow-origin', origin);
     headers.set('vary', 'origin');
     headers.set('access-control-allow-credentials', 'true');
@@ -20,6 +20,9 @@ const router = async (request: Request, env: Env): Promise<Response> => {
   const { pathname } = new URL(request.url);
 
   if (request.method === 'OPTIONS') {
+    if (!isAllowedOrigin(env, request)) {
+      return json({ error: 'forbidden_origin' }, { status: 403 });
+    }
     return new Response(null, { status: 204 });
   }
 
@@ -60,11 +63,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const response = await router(request, env);
-      return withCors(response, request);
+      return withCors(response, request, env);
     } catch (error) {
       return withCors(
         json({ error: 'internal_error', message: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 }),
         request,
+        env,
       );
     }
   },

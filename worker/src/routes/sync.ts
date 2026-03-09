@@ -1,5 +1,5 @@
 import { Env, SyncOperation, UserSession } from '../types';
-import { assertSameOrigin, id, isMutation, json, now, parseJson, rateLimit } from '../lib';
+import { id, isAllowedOrigin, isMutation, json, now, parseJson, rateLimit } from '../lib';
 import { getSchemaMeta } from '../db/schema';
 
 interface PushPayload {
@@ -167,8 +167,8 @@ const readSnapshot = async (env: Env, userId: string) => {
   return { tasks, projects, settings };
 };
 
-const applySecurity = (request: Request, session: UserSession) => {
-  if (isMutation(request.method) && !assertSameOrigin(request)) {
+const applySecurity = (env: Env, request: Request, session: UserSession) => {
+  if (isMutation(request.method) && !isAllowedOrigin(env, request)) {
     return json({ error: 'forbidden_origin' }, { status: 403 });
   }
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
@@ -180,7 +180,7 @@ const applySecurity = (request: Request, session: UserSession) => {
 
 export const syncRoutes = {
   async bootstrap(env: Env, request: Request, session: UserSession) {
-    const security = applySecurity(request, session);
+    const security = applySecurity(env, request, session);
     if (security) return security;
 
     const schema = await getSchemaMeta(env);
@@ -199,7 +199,7 @@ export const syncRoutes = {
   },
 
   async push(env: Env, request: Request, session: UserSession) {
-    const security = applySecurity(request, session);
+    const security = applySecurity(env, request, session);
     if (security) return security;
 
     const payload = await parseJson<PushPayload>(request);
@@ -225,7 +225,7 @@ export const syncRoutes = {
   },
 
   async pull(env: Env, request: Request, session: UserSession) {
-    const security = applySecurity(request, session);
+    const security = applySecurity(env, request, session);
     if (security) return security;
 
     const schema = await getSchemaMeta(env);

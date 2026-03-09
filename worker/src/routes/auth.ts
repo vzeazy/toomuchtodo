@@ -5,6 +5,7 @@ import {
   hash,
   hashPassword,
   id,
+  isAllowedOrigin,
   json,
   now,
   parseJson,
@@ -57,6 +58,8 @@ const parseCreds = (payload: AuthPayload | null) => {
 
 export const authRoutes = {
   async signUp(env: Env, request: Request) {
+    if (!isAllowedOrigin(env, request)) return json({ error: 'forbidden_origin' }, { status: 403 });
+
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     if (!rateLimit(`sign-up:${ip}`, 15, 60_000)) return json({ error: 'rate_limited' }, { status: 429 });
 
@@ -93,6 +96,8 @@ export const authRoutes = {
   },
 
   async signIn(env: Env, request: Request) {
+    if (!isAllowedOrigin(env, request)) return json({ error: 'forbidden_origin' }, { status: 403 });
+
     const ip = request.headers.get('cf-connecting-ip') || 'unknown';
     if (!rateLimit(`sign-in:${ip}`, 30, 60_000)) return json({ error: 'rate_limited' }, { status: 429 });
 
@@ -134,6 +139,8 @@ export const authRoutes = {
   },
 
   async signOut(env: Env, request: Request) {
+    if (!isAllowedOrigin(env, request)) return json({ error: 'forbidden_origin' }, { status: 403 });
+
     const cookieName = env.SESSION_COOKIE_NAME || 'tmtd_session';
     const token = readCookie(request, cookieName);
 

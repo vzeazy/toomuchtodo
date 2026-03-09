@@ -6,6 +6,9 @@ export interface Env {
   APP_SCHEMA_LATEST?: string;
   APP_SCHEMA_MIN_SUPPORTED?: string;
   SESSION_COOKIE_NAME?: string;
+  SESSION_COOKIE_DOMAIN?: string;
+  SESSION_COOKIE_SAME_SITE?: string;
+  ALLOWED_ORIGINS?: string;
 }
 
 export interface UserSession {
