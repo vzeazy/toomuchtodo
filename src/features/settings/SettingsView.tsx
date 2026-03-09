@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Cloud, Copy, Download, LogIn, Palette, RefreshCw, Settings2, ShieldCheck, Upload, UserPlus } from 'lucide-react';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { getTaskListGenerationPrompt, isTaskListExchange } from '../../lib/taskListExchange';
@@ -22,8 +22,8 @@ export const SettingsView: React.FC<{
   syncMeta: SyncMeta;
   syncStatus: string;
   onRefreshSession: () => Promise<void>;
-  onSignIn: (email: string, password: string) => Promise<void>;
-  onSignUp: (email: string, password: string) => Promise<void>;
+  onSignIn: (email: string, password: string, turnstileToken?: string | null) => Promise<void>;
+  onSignUp: (email: string, password: string, turnstileToken?: string | null) => Promise<void>;
   onSignOut: () => Promise<void>;
   onToggleCloudLinked: (enabled: boolean) => void;
   onRunSyncNow: () => Promise<void>;
@@ -53,6 +53,8 @@ export const SettingsView: React.FC<{
   const [password, setPassword] = useState('');
   const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-up');
   const [authPending, setAuthPending] = useState<'sign-in' | 'sign-up' | 'refresh' | 'sign-out' | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [turnstileReady, setTurnstileReady] = useState(false);
   const [themeBrief, setThemeBrief] = useState('');
   const [themeJson, setThemeJson] = useState('');
   const [llmProjectName, setLlmProjectName] = useState('');
@@ -64,8 +66,12 @@ export const SettingsView: React.FC<{
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const advancedTaskListInputRef = useRef<HTMLInputElement>(null);
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | number | null>(null);
 
   const promptText = getThemePrompt(themeBrief);
+  const turnstileSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY || '').trim();
+  const turnstileEnabled = turnstileSiteKey.length > 0;
   const roundtripPromptText = useMemo(
     () => getTaskListGenerationPrompt(llmProjectName || 'Imported Project', llmProjectBrief),
     [llmProjectBrief, llmProjectName],
@@ -76,12 +82,94 @@ export const SettingsView: React.FC<{
   const canUseProjectScope = taskListScopeMode === 'inbox' || !!taskListProjectId;
   const trimmedEmail = email.trim();
   const passwordLength = password.length;
-  const canSubmitAuth = !!trimmedEmail && passwordLength >= 8 && !authPending;
+  const canSubmitAuth = !!trimmedEmail && passwordLength >= 8 && !authPending && (!turnstileEnabled || !!turnstileToken);
   const syncEnabledAndAuthed = syncMeta.cloudLinked && !!authSession;
 
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error && error.message) return error.message;
     return fallback;
+  };
+
+  useEffect(() => {
+    if (!turnstileEnabled || authSession) return;
+
+    let cancelled = false;
+
+    const renderWidget = () => {
+      const api = (window as Window & {
+        turnstile?: {
+          render: (container: HTMLElement, options: Record<string, unknown>) => string | number;
+          reset: (widgetId?: string | number) => void;
+          remove: (widgetId?: string | number) => void;
+        };
+      }).turnstile;
+
+      if (!api || !turnstileContainerRef.current || turnstileWidgetIdRef.current !== null) return;
+
+      turnstileWidgetIdRef.current = api.render(turnstileContainerRef.current, {
+        sitekey: turnstileSiteKey,
+        theme: 'dark',
+        callback: (token: string) => {
+          if (cancelled) return;
+          setTurnstileToken(token);
+          setTurnstileReady(true);
+        },
+        'expired-callback': () => {
+          if (cancelled) return;
+          setTurnstileToken(null);
+          setTurnstileReady(true);
+        },
+        'error-callback': () => {
+          if (cancelled) return;
+          setTurnstileToken(null);
+          setTurnstileReady(true);
+        },
+      });
+      setTurnstileReady(true);
+    };
+
+    const existing = document.querySelector<HTMLScriptElement>('script[data-turnstile-script="true"]');
+    if (existing) {
+      renderWidget();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      script.dataset.turnstileScript = 'true';
+      script.onload = () => {
+        if (!cancelled) renderWidget();
+      };
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      cancelled = true;
+      const api = (window as Window & {
+        turnstile?: {
+          remove: (widgetId?: string | number) => void;
+        };
+      }).turnstile;
+      if (api && turnstileWidgetIdRef.current !== null) {
+        api.remove(turnstileWidgetIdRef.current);
+      }
+      turnstileWidgetIdRef.current = null;
+      setTurnstileToken(null);
+      setTurnstileReady(false);
+    };
+  }, [authSession, turnstileEnabled, turnstileSiteKey]);
+
+  const resetTurnstile = () => {
+    if (!turnstileEnabled) return;
+    const api = (window as Window & {
+      turnstile?: {
+        reset: (widgetId?: string | number) => void;
+      };
+    }).turnstile;
+    if (api && turnstileWidgetIdRef.current !== null) {
+      api.reset(turnstileWidgetIdRef.current);
+    }
+    setTurnstileToken(null);
   };
 
   const importTaskListFile = async (
@@ -255,15 +343,16 @@ export const SettingsView: React.FC<{
                         setAuthPending(nextMode);
                         try {
                           if (nextMode === 'sign-in') {
-                            await onSignIn(trimmedEmail, password);
+                            await onSignIn(trimmedEmail, password, turnstileToken);
                             setMessage('Signed in successfully.');
                           } else {
-                            await onSignUp(trimmedEmail, password);
+                            await onSignUp(trimmedEmail, password, turnstileToken);
                             setMessage('Account created and signed in.');
                           }
                         } catch (error) {
                           setMessage(getErrorMessage(error, nextMode === 'sign-in' ? 'Sign in failed.' : 'Sign up failed.'));
                         } finally {
+                          resetTurnstile();
                           setAuthPending(null);
                         }
                       }}
@@ -298,6 +387,22 @@ export const SettingsView: React.FC<{
                       ? 'New account flow creates a session immediately and primes this device for first sync.'
                       : 'Use the same email and password you used when the account was created.'}
                   </div>
+
+                  {turnstileEnabled && (
+                    <div className="mt-4 rounded-[20px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-4">
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        Human check
+                      </div>
+                      <div ref={turnstileContainerRef} />
+                      <div className="mt-2 text-xs text-[var(--text-muted)]">
+                        {turnstileToken
+                          ? 'Verification complete.'
+                          : turnstileReady
+                            ? 'Complete the verification challenge to continue.'
+                            : 'Loading verification...'}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="px-5 py-5">

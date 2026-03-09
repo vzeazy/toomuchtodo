@@ -6,6 +6,12 @@ export interface AuthSession {
   };
 }
 
+interface AuthRequestPayload {
+  email: string;
+  password: string;
+  turnstileToken?: string | null;
+}
+
 const readErrorDetail = async (response: Response) => {
   try {
     const data = await response.json() as { error?: string; message?: string };
@@ -31,12 +37,12 @@ export const authClient = {
     return response.json() as Promise<AuthSession>;
   },
 
-  async signUp(email: string, password: string) {
+  async signUp(email: string, password: string, turnstileToken?: string | null) {
     const response = await fetch(withBase('/api/auth/sign-up'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, turnstileToken } satisfies AuthRequestPayload),
     });
     if (!response.ok) {
       const detail = await readErrorDetail(response);
@@ -45,12 +51,12 @@ export const authClient = {
     return response.json() as Promise<AuthSession>;
   },
 
-  async signIn(email: string, password: string) {
+  async signIn(email: string, password: string, turnstileToken?: string | null) {
     const response = await fetch(withBase('/api/auth/sign-in'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, turnstileToken } satisfies AuthRequestPayload),
     });
     if (!response.ok) {
       const detail = await readErrorDetail(response);

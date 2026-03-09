@@ -251,8 +251,8 @@ export const useAppStore = () => {
     }
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    memoryAuthSession = await authClient.signUp(email, password);
+  const signUp = useCallback(async (email: string, password: string, turnstileToken?: string | null) => {
+    memoryAuthSession = await authClient.signUp(email, password, turnstileToken);
     const linked = getSharedSyncMeta();
     const next = { ...linked, mode: 'account' as const, cloudLinked: true };
     if (!next.syncCursor && !next.pendingOps.length) {
@@ -262,8 +262,8 @@ export const useAppStore = () => {
     notifyListeners();
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    memoryAuthSession = await authClient.signIn(email, password);
+  const signIn = useCallback(async (email: string, password: string, turnstileToken?: string | null) => {
+    memoryAuthSession = await authClient.signIn(email, password, turnstileToken);
     const linked = getSharedSyncMeta();
     const next = { ...linked, mode: 'account' as const, cloudLinked: true };
     if (!next.syncCursor && !next.pendingOps.length) {
