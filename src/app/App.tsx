@@ -19,8 +19,10 @@ import {
   Folder,
   Inbox,
   Keyboard,
+  LayoutGrid,
   LayoutList,
   List,
+  Minus,
   PanelsTopLeft,
   Maximize2,
   Minimize2,
@@ -49,7 +51,7 @@ import {
 } from '../lib/taskListExchange';
 import { getThemeVariables } from '../lib/theme';
 import { createExportPayload, useAppStore } from '../store/useAppStore';
-import { AppDataExport, AppView, NoteScopeType, PlannerWidthMode, Task, TaskListMode, TaskListImportMode, TaskListScope, TaskStatus } from '../types';
+import { AppDataExport, AppView, NoteListPreview, NoteViewLayout, NoteScopeType, PlannerWidthMode, Task, TaskListMode, TaskListImportMode, TaskListScope, TaskStatus } from '../types';
 import { useAppLocation } from '../lib/useAppLocation';
 import { CommandItem, CommandPalette } from '../features/command-palette/CommandPalette';
 import { NotesDashboardView } from '../features/notes/NotesDashboardView';
@@ -121,6 +123,8 @@ export default function App() {
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
+    setNotesListPreview,
+    setNotesViewLayout,
     timer,
     startTimer,
     pauseTimer,
@@ -690,6 +694,48 @@ export default function App() {
             </div>
           )}
 
+          {currentView === 'notes' && (
+            <>
+              {/* Notes layout toggle */}
+              <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
+                {([
+                  { id: 'list', icon: LayoutList, label: 'List' },
+                  { id: 'card', icon: LayoutGrid, label: 'Card' },
+                ] as Array<{ id: NoteViewLayout; icon: typeof LayoutList; label: string }>).map(({ id, icon: Icon, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setNotesViewLayout(id)}
+                    className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all lg:px-2.5 ${settings.notesViewLayout === id ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                  >
+                    <Icon size={13} />
+                    <span className="hidden lg:inline">{label}</span>
+                  </button>
+                ))}
+              </div>
+              {/* Notes preview toggle (list only) */}
+              {settings.notesViewLayout === 'list' && (
+                <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
+                  {([
+                    { id: 'none', icon: Minus, label: 'None' },
+                    { id: 'line1', icon: LayoutList, label: '1 line' },
+                    { id: 'line3', icon: FileText, label: '3 lines' },
+                  ] as Array<{ id: NoteListPreview; icon: typeof Minus; label: string }>).map(({ id, icon: Icon, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setNotesListPreview(id)}
+                      className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all lg:px-2.5 ${settings.notesListPreview === id ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                    >
+                      <Icon size={13} />
+                      <span className="hidden lg:inline">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           {currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && currentView !== 'notes' && (
             <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
               {(['list', 'outline'] as TaskListMode[]).map((mode) => {
@@ -1048,10 +1094,14 @@ export default function App() {
                 notes={activeNotes}
                 projects={projects}
                 focusState={notesViewFocus}
+                notesListPreview={settings.notesListPreview}
+                notesViewLayout={settings.notesViewLayout}
                 onAddNote={addNote}
                 onUpdateNote={updateNote}
                 onDeleteNote={deleteNote}
                 onTogglePinned={toggleNotePinned}
+                onSetNotesListPreview={setNotesListPreview}
+                onSetNotesViewLayout={setNotesViewLayout}
               />
             )}
 

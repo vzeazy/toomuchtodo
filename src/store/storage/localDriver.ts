@@ -34,6 +34,8 @@ const buildLegacyState = (): AppStateData | null => {
       activeThemeId: builtInThemes[0].id,
       plannerWidthMode: 'container',
       taskListMode: 'list',
+      notesListPreview: 'line1',
+      notesViewLayout: 'list',
       showCompletedTasks: true,
       hideEmptyProjectsInPlanner: false,
       compactEmptyDaysInPlanner: false,

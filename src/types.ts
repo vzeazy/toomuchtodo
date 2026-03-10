@@ -4,6 +4,8 @@ export type AppView = TaskStatus | 'focus' | 'today' | 'trash' | 'all' | 'planne
 
 export type PlannerWidthMode = 'container' | 'wide' | 'full';
 export type TaskListMode = 'list' | 'outline';
+export type NoteListPreview = 'none' | 'line1' | 'line3';
+export type NoteViewLayout = 'list' | 'card';
 export type DayPart = 'morning' | 'afternoon' | 'evening';
 export type NoteScopeType = 'dashboard' | 'project' | 'area' | 'day';
 
@@ -83,6 +85,8 @@ export interface AppSettings {
   activeThemeId: string;
   plannerWidthMode: PlannerWidthMode;
   taskListMode: TaskListMode;
+  notesListPreview: NoteListPreview;
+  notesViewLayout: NoteViewLayout;
   showCompletedTasks: boolean;
   hideEmptyProjectsInPlanner: boolean;
   compactEmptyDaysInPlanner: boolean;

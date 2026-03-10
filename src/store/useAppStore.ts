@@ -9,6 +9,8 @@ import {
   AppSettings,
   AppStateData,
   Note,
+  NoteListPreview,
+  NoteViewLayout,
   NoteScopeType,
   PlannerWidthMode,
   Project,
@@ -38,6 +40,8 @@ const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
   plannerWidthMode: 'container',
   taskListMode: 'list',
+  notesListPreview: 'line1',
+  notesViewLayout: 'list',
   showCompletedTasks: true,
   hideEmptyProjectsInPlanner: false,
   compactEmptyDaysInPlanner: false,
@@ -142,6 +146,8 @@ const normalizeState = (parsed: Partial<AppStateData>): AppStateData => ({
     activeThemeId: parsed.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
     plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
     taskListMode: (parsed.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
+    notesListPreview: (parsed.settings?.notesListPreview as NoteListPreview) || INITIAL_SETTINGS.notesListPreview,
+    notesViewLayout: (parsed.settings?.notesViewLayout as NoteViewLayout) || INITIAL_SETTINGS.notesViewLayout,
     showCompletedTasks: parsed.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
     hideEmptyProjectsInPlanner: parsed.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
     compactEmptyDaysInPlanner: parsed.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
@@ -666,6 +672,8 @@ export const useAppStore = () => {
         activeThemeId: imported.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
         plannerWidthMode: (imported.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
         taskListMode: (imported.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
+        notesListPreview: (imported.settings?.notesListPreview as NoteListPreview) || INITIAL_SETTINGS.notesListPreview,
+        notesViewLayout: (imported.settings?.notesViewLayout as NoteViewLayout) || INITIAL_SETTINGS.notesViewLayout,
         showCompletedTasks: imported.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
         hideEmptyProjectsInPlanner: imported.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
         compactEmptyDaysInPlanner: imported.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
@@ -759,6 +767,14 @@ export const useAppStore = () => {
 
   const setTaskListMode = useCallback((taskListMode: TaskListMode) => {
     setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, taskListMode } }));
+  }, []);
+
+  const setNotesListPreview = useCallback((notesListPreview: NoteListPreview) => {
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, notesListPreview } }));
+  }, []);
+
+  const setNotesViewLayout = useCallback((notesViewLayout: NoteViewLayout) => {
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, notesViewLayout } }));
   }, []);
 
   const setShowCompletedTasks = useCallback((showCompletedTasks: boolean) => {
@@ -937,6 +953,8 @@ export const useAppStore = () => {
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,
+    setNotesListPreview,
+    setNotesViewLayout,
     setShowCompletedTasks,
     setTaskParent,
     moveTaskBefore,

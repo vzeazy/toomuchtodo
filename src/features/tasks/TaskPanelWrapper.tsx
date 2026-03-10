@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { FileText, PictureInPicture2 } from 'lucide-react';
+import { FileText, PictureInPicture2, StickyNote } from 'lucide-react';
 import { Project, Task, TaskListMode, AppView, Note, NoteScopeType } from '../../types';
 import { TaskListView } from './TaskListView';
 import {
@@ -157,8 +157,40 @@ export const TaskPanelWrapper: React.FC<{
       }
     }, [panel.view, projects, selectedArea, selectedPlannerDay, panel.projectId]);
 
+    const projectNotes = useMemo(() => {
+      if (!panel.projectId) return [];
+      return visibleNotes.filter((note) => matchesScope(note, 'project', panel.projectId)).slice(0, 6);
+    }, [panel.projectId, visibleNotes]);
+
     const child = (
       <div>
+        {panel.projectId && projectNotes.length > 0 && (
+          <div className="mx-auto max-w-5xl mb-1 px-[2px]">
+            <div className="flex flex-wrap items-center gap-1.5 pb-5">
+              <StickyNote size={11} className="text-[var(--text-muted)] shrink-0" />
+              {projectNotes.map((note) => (
+                <button
+                  key={note.id}
+                  type="button"
+                  onClick={() => onOpenNotes('project', panel.projectId)}
+                  className="inline-flex items-center gap-1 rounded-full border soft-divider panel-muted px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] hover:border-[var(--accent-soft)] max-w-[160px]"
+                  title={note.body ? note.body.slice(0, 80) : note.title}
+                >
+                  <span className="truncate">{note.title || 'Untitled'}</span>
+                </button>
+              ))}
+              {(scopedNoteCount ?? 0) > projectNotes.length && (
+                <button
+                  type="button"
+                  onClick={() => onOpenNotes('project', panel.projectId)}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  +{(scopedNoteCount ?? 0) - projectNotes.length} more
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         <TaskListView
           tasks={taskListTasks}
           allTasks={tasks}
