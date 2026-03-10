@@ -1,5 +1,5 @@
 import { AppStateData, SyncMeta } from '../../types';
-import { createDefaultSyncMeta, PersistedEnvelope, runStateMigrations } from './migrations';
+import { APP_SCHEMA_VERSION, createDefaultSyncMeta, PersistedEnvelope, runStateMigrations } from './migrations';
 import { builtInThemes } from '../../themes/builtInThemes';
 
 const STORAGE_KEY = 'too_much_to_do_state_v2';
@@ -102,6 +102,7 @@ export class LocalOnlyDriver implements StorageDriver {
     };
 
     if (!normalized.deviceId) normalized.deviceId = createDefaultSyncMeta().deviceId;
+    normalized.localSchemaVersion = APP_SCHEMA_VERSION;
     this.setSyncMeta(normalized);
     return normalized;
   }
