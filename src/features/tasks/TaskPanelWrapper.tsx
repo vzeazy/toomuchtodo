@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { PictureInPicture2 } from 'lucide-react';
+import { FileText, PictureInPicture2 } from 'lucide-react';
 import { Project, Task, TaskListMode, AppView, Note, NoteScopeType } from '../../types';
 import { TaskListView } from './TaskListView';
 import {
@@ -8,8 +8,7 @@ import {
 } from './TaskPanelPictureInPictureBridge';
 import { getProjectSubtreeIds } from '../../lib/projectTree';
 import { collectTaskIdsWithAncestors, getTaskDescendantIds } from './taskTree';
-import { ScopedNotesSection } from '../notes/ScopedNotesSection';
-import { matchesScope, sortNotes } from '../notes/noteUtils';
+import { matchesScope } from '../notes/noteUtils';
 
 export interface PanelState {
   id: string;
@@ -29,7 +28,6 @@ export const TaskPanelWrapper: React.FC<{
   expandedTaskId: string | null;
   setExpandedTaskId: (id: string | null) => void;
   addTask: (title: string, status: string, area: string, projectId: string | null, dueDate: string | null, forceLast?: boolean, parentId?: string | null, dayPart?: 'morning' | 'afternoon' | 'evening' | null) => Task;
-  addNote: (input: { scopeType: NoteScopeType; scopeRef: string | null }) => Note;
   setTaskListMode: (mode: TaskListMode) => void;
   toggleStar: (id: string) => void;
   toggleComplete: (id: string) => void;
@@ -39,11 +37,8 @@ export const TaskPanelWrapper: React.FC<{
   moveTaskAfter: (sourceId: string, targetId: string, parentId: string | null) => void;
   toggleTaskCollapsed: (id: string) => void;
   deleteTask: (id: string) => void;
-  updateNote: (id: string, updates: Partial<Note>) => void;
-  deleteNote: (id: string) => void;
-  toggleNotePinned: (id: string) => void;
   setTaskToEditInModal: (task: Task | null) => void;
-  onOpenNotes: (scopeType: NoteScopeType, scopeRef: string | null, noteId?: string | null) => void;
+  onOpenNotes: (scopeType: NoteScopeType | 'all', scopeRef: string | null) => void;
   onOpenDate?: (dateStr: string) => void;
   onBack?: () => void;
   onClose?: () => void;
@@ -59,7 +54,6 @@ export const TaskPanelWrapper: React.FC<{
   expandedTaskId,
   setExpandedTaskId,
   addTask,
-  addNote,
   setTaskListMode,
   toggleStar,
   toggleComplete,
@@ -69,9 +63,6 @@ export const TaskPanelWrapper: React.FC<{
   moveTaskAfter,
   toggleTaskCollapsed,
   deleteTask,
-  updateNote,
-  deleteNote,
-  toggleNotePinned,
   setTaskToEditInModal,
   onOpenNotes,
   onOpenDate,
@@ -128,42 +119,25 @@ export const TaskPanelWrapper: React.FC<{
       };
     }, [panel.dateStr]);
 
-    const visibleNotes = useMemo(() => sortNotes(notes.filter((note) => note.deletedAt === null)), [notes]);
-    const scopedNotes = useMemo(() => {
-      const sections: Array<{ title: string; scopeType: NoteScopeType; scopeRef: string | null; notes: Note[] }> = [];
-
-      if (panel.projectId) {
-        sections.push({
-          title: 'Project Notes',
-          scopeType: 'project',
-          scopeRef: panel.projectId,
-          notes: visibleNotes.filter((note) => matchesScope(note, 'project', panel.projectId)),
-        });
+    const visibleNotes = useMemo(() => notes.filter((note) => note.deletedAt === null), [notes]);
+    const scopedNoteCount = useMemo(() => {
+      if (panel.projectId) return visibleNotes.filter((note) => matchesScope(note, 'project', panel.projectId)).length;
+      if ((panel.view === 'day' || panel.view === 'today') && (panel.dateStr || todayDateStr)) {
+        const ref = panel.view === 'today' ? todayDateStr : panel.dateStr!;
+        return visibleNotes.filter((note) => matchesScope(note, 'day', ref)).length;
       }
+      if (selectedArea) return visibleNotes.filter((note) => matchesScope(note, 'area', selectedArea)).length;
+      return null;
+    }, [panel.projectId, panel.view, panel.dateStr, selectedArea, todayDateStr, visibleNotes]);
 
-      if (panel.view === 'day' || panel.view === 'today') {
-        const scopeRef = panel.view === 'today' ? todayDateStr : panel.dateStr;
-        if (scopeRef) {
-          sections.push({
-            title: 'Day Notes',
-            scopeType: 'day',
-            scopeRef,
-            notes: visibleNotes.filter((note) => matchesScope(note, 'day', scopeRef)),
-          });
-        }
+    const scopedNotesLink = useMemo(() => {
+      if (panel.projectId) return { scopeType: 'project' as const, scopeRef: panel.projectId };
+      if ((panel.view === 'day' || panel.view === 'today') && (panel.dateStr || todayDateStr)) {
+        return { scopeType: 'day' as const, scopeRef: panel.view === 'today' ? todayDateStr : panel.dateStr! };
       }
-
-      if (selectedArea) {
-        sections.push({
-          title: 'Area Notes',
-          scopeType: 'area',
-          scopeRef: selectedArea,
-          notes: visibleNotes.filter((note) => matchesScope(note, 'area', selectedArea)),
-        });
-      }
-
-      return sections;
-    }, [panel.dateStr, panel.projectId, panel.view, selectedArea, todayDateStr, visibleNotes]);
+      if (selectedArea) return { scopeType: 'area' as const, scopeRef: selectedArea };
+      return null;
+    }, [panel.projectId, panel.view, panel.dateStr, selectedArea, todayDateStr]);
 
     const headerTitle = useMemo(() => {
       if (panel.projectId) return projects.find((project) => project.id === panel.projectId)?.name || 'Project';
@@ -185,20 +159,6 @@ export const TaskPanelWrapper: React.FC<{
 
     const child = (
       <div>
-        {scopedNotes.map((section) => (
-          <ScopedNotesSection
-            key={`${section.scopeType}:${section.scopeRef ?? 'dashboard'}`}
-            title={section.title}
-            scopeType={section.scopeType}
-            scopeRef={section.scopeRef}
-            notes={section.notes}
-            onAddNote={addNote}
-            onUpdateNote={updateNote}
-            onDeleteNote={deleteNote}
-            onTogglePinned={toggleNotePinned}
-            onOpenAllNotes={onOpenNotes}
-          />
-        ))}
         <TaskListView
           tasks={taskListTasks}
           allTasks={tasks}
@@ -260,12 +220,26 @@ export const TaskPanelWrapper: React.FC<{
       </div>
     );
 
+    const notesLinkButton = scopedNotesLink && (
+      <button
+        type="button"
+        onClick={() => onOpenNotes(scopedNotesLink.scopeType, scopedNotesLink.scopeRef)}
+        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border soft-divider panel-muted px-3 transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        title="Open notes for this context"
+      >
+        <FileText className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
+          Notes{scopedNoteCount !== null && scopedNoteCount > 0 ? ` (${scopedNoteCount})` : ''}
+        </span>
+      </button>
+    );
+
     const popOutAction = (
       <button
         type="button"
         onClick={handleTogglePictureInPicture}
         disabled={!isPictureInPictureSupported}
-        className={`absolute top-0 z-20 inline-flex h-9 items-center justify-center gap-2 rounded-full border soft-divider panel-muted px-3 transition-colors ${onClose ? 'right-10' : 'right-0'} ${isPictureInPictureSupported ? 'text-[var(--text-muted)] hover:text-[var(--text-primary)]' : 'cursor-not-allowed opacity-40'}`}
+        className={`inline-flex h-9 items-center justify-center gap-2 rounded-full border soft-divider panel-muted px-3 transition-colors ${isPictureInPictureSupported ? 'text-[var(--text-muted)] hover:text-[var(--text-primary)]' : 'cursor-not-allowed opacity-40'}`}
         title={isPictureInPictureSupported ? (isPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window') : 'Always-on-top view is not supported in this browser'}
         aria-label={isPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window'}
       >
@@ -274,6 +248,24 @@ export const TaskPanelWrapper: React.FC<{
           {isPictureInPictureSupported ? 'Pop Out' : 'No PiP'}
         </span>
       </button>
+    );
+
+    const panelActions = (
+      <div className="absolute top-0 right-0 z-20 flex items-center gap-2">
+        {notesLinkButton}
+        {popOutAction}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border soft-divider panel-muted text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            title="Close Panel"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
     );
 
     const body = isPictureInPictureOpen ? pictureInPicturePlaceholder : child;
@@ -290,7 +282,7 @@ export const TaskPanelWrapper: React.FC<{
             {child}
           </TaskPanelPictureInPictureBridge>
           <div className="relative">
-            {popOutAction}
+            {panelActions}
             {body}
           </div>
         </>
@@ -308,18 +300,7 @@ export const TaskPanelWrapper: React.FC<{
           {child}
         </TaskPanelPictureInPictureBridge>
         <div className="relative h-full flex flex-col flex-1 shrink-0 min-w-[320px] max-w-[800px] border-r soft-divider pr-8 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-          {popOutAction}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="absolute right-0 top-0 p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] z-10 transition-colors"
-              title="Close Panel"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          )}
+          {panelActions}
           {body}
         </div>
       </>

@@ -339,9 +339,7 @@ export default function App() {
 
     if (lower.startsWith('note:') || lower.startsWith('no:')) {
       const title = query.slice(query.indexOf(':') + 1).trim();
-      if (!title) {
-        return [{ id: 'note-help', label: 'Type after note: to create a dashboard note', hint: 'Note', run: () => undefined, disabled: true }];
-      }
+      if (!title) return [];
       return [
         {
           id: 'note-add-dashboard',
@@ -1071,7 +1069,6 @@ export default function App() {
                     expandedTaskId={expandedTaskId}
                     setExpandedTaskId={setExpandedTaskId}
                     addTask={addTask}
-                    addNote={addNote}
                     setTaskListMode={setTaskListMode}
                     toggleStar={toggleStar}
                     toggleComplete={toggleComplete}
@@ -1081,9 +1078,6 @@ export default function App() {
                     moveTaskAfter={moveTaskAfter}
                     toggleTaskCollapsed={toggleTaskCollapsed}
                     deleteTask={deleteTask}
-                    updateNote={updateNote}
-                    deleteNote={deleteNote}
-                    toggleNotePinned={toggleNotePinned}
                     setTaskToEditInModal={setTaskToEditInModal}
                     onOpenNotes={openNotesDashboard}
                     onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
@@ -1103,7 +1097,6 @@ export default function App() {
                       expandedTaskId={expandedTaskId}
                       setExpandedTaskId={setExpandedTaskId}
                       addTask={addTask}
-                      addNote={addNote}
                       setTaskListMode={setTaskListMode}
                       toggleStar={toggleStar}
                       toggleComplete={toggleComplete}
@@ -1113,9 +1106,6 @@ export default function App() {
                       moveTaskAfter={moveTaskAfter}
                       toggleTaskCollapsed={toggleTaskCollapsed}
                       deleteTask={deleteTask}
-                      updateNote={updateNote}
-                      deleteNote={deleteNote}
-                      toggleNotePinned={toggleNotePinned}
                       setTaskToEditInModal={setTaskToEditInModal}
                       onOpenNotes={openNotesDashboard}
                     />
@@ -1132,7 +1122,6 @@ export default function App() {
                         expandedTaskId={expandedTaskId}
                         setExpandedTaskId={setExpandedTaskId}
                         addTask={addTask}
-                        addNote={addNote}
                         setTaskListMode={setTaskListMode}
                         toggleStar={toggleStar}
                         toggleComplete={toggleComplete}
@@ -1142,9 +1131,6 @@ export default function App() {
                         moveTaskAfter={moveTaskAfter}
                         toggleTaskCollapsed={toggleTaskCollapsed}
                         deleteTask={deleteTask}
-                        updateNote={updateNote}
-                        deleteNote={deleteNote}
-                        toggleNotePinned={toggleNotePinned}
                         setTaskToEditInModal={setTaskToEditInModal}
                         onOpenNotes={openNotesDashboard}
                         onClose={() => setAdditionalPanels((prev) => prev.filter((p) => p.id !== panel.id))}

@@ -2,14 +2,8 @@ import React from 'react';
 import { FileText, Plus, Search, Star } from 'lucide-react';
 import { getMarkdownExcerpt } from '../../lib/markdown';
 import { Note, NoteScopeType, Project } from '../../types';
-import { NoteEditorCard } from './NoteEditorCard';
+import { MarkdownEditor } from '../../components/MarkdownEditor';
 import { NoteScopeFilter, formatNoteTimestamp, getScopeLabel, sortNotes } from './noteUtils';
-
-type NotesFocusState = {
-  scopeType: NoteScopeFilter;
-  scopeRef: string | null;
-  noteId: string | null;
-};
 
 const FILTERS: Array<{ id: NoteScopeFilter; label: string }> = [
   { id: 'all', label: 'All' },
@@ -22,7 +16,7 @@ const FILTERS: Array<{ id: NoteScopeFilter; label: string }> = [
 export const NotesDashboardView: React.FC<{
   notes: Note[];
   projects: Project[];
-  focusState: NotesFocusState;
+  focusState: { scopeType: NoteScopeFilter; scopeRef: string | null; noteId: string | null };
   onAddNote: (input: { scopeType: NoteScopeType; scopeRef: string | null }) => Note;
   onUpdateNote: (id: string, updates: Partial<Note>) => void;
   onDeleteNote: (id: string) => void;
@@ -30,11 +24,11 @@ export const NotesDashboardView: React.FC<{
 }> = ({ notes, projects, focusState, onAddNote, onUpdateNote, onDeleteNote, onTogglePinned }) => {
   const [query, setQuery] = React.useState('');
   const [scopeFilter, setScopeFilter] = React.useState<NoteScopeFilter>(focusState.scopeType);
-  const [selectedNoteId, setSelectedNoteId] = React.useState<string | null>(focusState.noteId);
+  const [expandedNoteId, setExpandedNoteId] = React.useState<string | null>(focusState.noteId);
 
   React.useEffect(() => {
     setScopeFilter(focusState.scopeType);
-    setSelectedNoteId(focusState.noteId);
+    setExpandedNoteId(focusState.noteId);
   }, [focusState.noteId, focusState.scopeType, focusState.scopeRef]);
 
   const filteredNotes = React.useMemo(() => {
@@ -48,61 +42,22 @@ export const NotesDashboardView: React.FC<{
     }));
   }, [focusState.scopeRef, notes, projects, query, scopeFilter]);
 
-  React.useEffect(() => {
-    if (!filteredNotes.length) {
-      setSelectedNoteId(null);
-      return;
-    }
-    if (!selectedNoteId || !filteredNotes.some((note) => note.id === selectedNoteId)) {
-      setSelectedNoteId(filteredNotes[0].id);
-    }
-  }, [filteredNotes, selectedNoteId]);
-
-  const selectedNote = filteredNotes.find((note) => note.id === selectedNoteId) ?? null;
-  const pinnedNotes = filteredNotes.filter((note) => note.pinned);
-  const recentNotes = filteredNotes.filter((note) => !note.pinned);
-
   const handleCreate = () => {
     const desiredScopeType = scopeFilter === 'all' ? 'dashboard' : scopeFilter;
     const desiredScopeRef = desiredScopeType === 'dashboard' ? null : focusState.scopeRef;
     const scopeType = desiredScopeType !== 'dashboard' && desiredScopeRef === null ? 'dashboard' : desiredScopeType;
     const scopeRef = scopeType === 'dashboard' ? null : desiredScopeRef;
     const note = onAddNote({ scopeType, scopeRef });
-    setSelectedNoteId(note.id);
+    setExpandedNoteId(note.id);
   };
 
-  const renderSection = (title: string, sectionNotes: Note[]) => (
-    <section className="rounded-[28px] border soft-divider p-3">
-      <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-muted)]">{title}</div>
-      <div className="space-y-2">
-        {sectionNotes.map((note) => (
-          <button
-            key={note.id}
-            type="button"
-            onClick={() => setSelectedNoteId(note.id)}
-            className={`w-full rounded-2xl px-3 py-3 text-left transition-colors ${selectedNoteId === note.id ? 'bg-[var(--accent-soft)]/45' : 'hover:bg-[rgba(255,255,255,0.03)]'}`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{note.title}</div>
-                <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                  {getScopeLabel(note.scopeType, note.scopeRef, projects)}
-                </div>
-              </div>
-              {note.pinned && <Star size={12} className="mt-0.5 fill-[var(--accent)] text-[var(--accent)]" />}
-            </div>
-            <div className="mt-2 text-[12px] leading-5 text-[var(--text-secondary)]">{getMarkdownExcerpt(note.body, 120)}</div>
-            <div className="mt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              {formatNoteTimestamp(note.updatedAt)}
-            </div>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
+  const handleRowClick = (noteId: string) => {
+    setExpandedNoteId((prev) => (prev === noteId ? null : noteId));
+  };
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-3xl">
+      {/* Header */}
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="section-kicker mb-2 text-[10px] font-bold uppercase text-[var(--accent)]">Notes</div>
@@ -111,7 +66,6 @@ export const NotesDashboardView: React.FC<{
             {filteredNotes.length} note{filteredNotes.length === 1 ? '' : 's'}
           </div>
         </div>
-
         <button
           type="button"
           onClick={handleCreate}
@@ -122,7 +76,18 @@ export const NotesDashboardView: React.FC<{
         </button>
       </div>
 
-      <div className="mb-6 flex flex-col gap-3 rounded-[28px] border soft-divider p-4 lg:flex-row lg:items-center lg:justify-between">
+      {/* Search + filters */}
+      <div className="mb-5 flex flex-col gap-3">
+        <label className="flex items-center gap-2 rounded-2xl border soft-divider panel-muted px-4 py-2.5 text-[var(--text-secondary)]">
+          <Search size={14} className="shrink-0" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search notes…"
+            className="w-full bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          />
+        </label>
         <div className="flex flex-wrap gap-2">
           {FILTERS.map((filter) => (
             <button
@@ -135,48 +100,97 @@ export const NotesDashboardView: React.FC<{
             </button>
           ))}
         </div>
-
-        <label className="panel-muted flex items-center gap-2 rounded-full border soft-divider px-3 py-2 text-[var(--text-secondary)]">
-          <Search size={14} />
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search note titles and bodies"
-            className="w-full bg-transparent text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] lg:w-72"
-          />
-        </label>
       </div>
 
+      {/* Notes list */}
       {filteredNotes.length === 0 ? (
         <div className="panel-surface rounded-[28px] px-6 py-12 text-center">
           <FileText size={22} className="mx-auto text-[var(--text-muted)]" />
-          <div className="mt-4 text-[18px] font-medium text-[var(--text-primary)]">No notes found</div>
+          <div className="mt-4 text-[18px] font-medium text-[var(--text-primary)]">No notes yet</div>
           <div className="mt-2 text-[13px] text-[var(--text-secondary)]">
-            Try a different filter, or create your first note.
+            {query ? 'Try a different search.' : 'Create your first note with the button above.'}
           </div>
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-          <div className="space-y-4">
-            {pinnedNotes.length > 0 && renderSection('Pinned', pinnedNotes)}
-            {recentNotes.length > 0 && renderSection('Recent', recentNotes)}
-            {pinnedNotes.length === 0 && recentNotes.length === 0 && renderSection('Results', filteredNotes)}
-          </div>
+        <div className="panel-surface rounded-[28px] overflow-hidden">
+          {filteredNotes.map((note, index) => {
+            const isExpanded = expandedNoteId === note.id;
+            const scopeLabel = getScopeLabel(note.scopeType, note.scopeRef, projects);
+            const isLast = index === filteredNotes.length - 1;
 
-          <div className="lg:sticky lg:top-0 lg:self-start">
-            {selectedNote && (
-              <NoteEditorCard
-                note={selectedNote}
-                scopeLabel={getScopeLabel(selectedNote.scopeType, selectedNote.scopeRef, projects)}
-                onUpdateNote={onUpdateNote}
-                onDeleteNote={onDeleteNote}
-                onTogglePinned={onTogglePinned}
-              />
-            )}
-          </div>
+            return (
+              <div key={note.id} className={!isLast ? 'border-b soft-divider' : ''}>
+                {/* Row */}
+                <button
+                  type="button"
+                  onClick={() => handleRowClick(note.id)}
+                  className={`w-full px-6 py-4 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)] ${isExpanded ? 'bg-[rgba(255,255,255,0.03)]' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]">
+                          {note.title || 'Untitled'}
+                        </span>
+                        {note.pinned && <Star size={12} className="shrink-0 fill-[var(--accent)] text-[var(--accent)]" />}
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        <span>{scopeLabel}</span>
+                        <span>·</span>
+                        <span>{formatNoteTimestamp(note.updatedAt)}</span>
+                      </div>
+                      {!isExpanded && note.body.trim() && (
+                        <div className="mt-1.5 text-[12px] leading-5 text-[var(--text-secondary)] line-clamp-2">
+                          {getMarkdownExcerpt(note.body, 160)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Inline editor — accordion expansion */}
+                {isExpanded && (
+                  <div className="border-t soft-divider px-6 pb-5 pt-4">
+                    <input
+                      type="text"
+                      value={note.title}
+                      onChange={(e) => onUpdateNote(note.id, { title: e.target.value })}
+                      placeholder="Untitled note"
+                      className="mb-4 w-full bg-transparent text-[22px] font-semibold tracking-[-0.03em] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                    />
+                    <MarkdownEditor
+                      value={note.body}
+                      onChange={(value) => onUpdateNote(note.id, { body: value })}
+                      minHeightClassName="min-h-[180px]"
+                    />
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onTogglePinned(note.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${note.pinned ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'panel-muted border soft-divider text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                      >
+                        <Star size={11} className={note.pinned ? 'fill-current' : ''} />
+                        {note.pinned ? 'Pinned' : 'Pin'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDeleteNote(note.id);
+                          setExpandedNoteId(null);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]/20"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
+

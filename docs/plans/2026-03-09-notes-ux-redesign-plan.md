@@ -100,17 +100,24 @@ Simplify or remove `notesViewFocus` state — the dashboard can use URL params o
 
 ## Implementation Phases
 
-### Phase 1 — Strip the invasive parts
-1. Remove `ScopedNotesSection` from `TaskPanelWrapper` (and all its props from App.tsx)
-2. Delete `ScopedNotesSection.tsx`
-3. Add a minimal "Notes" link button in the panel header (just navigation, no inline editing)
-4. Verify build passes
+### Phase 1 — Strip the invasive parts ✅ DONE
+1. Removed `ScopedNotesSection` and its 4 note-editing props from `TaskPanelWrapper`
+2. Deleted `ScopedNotesSection.tsx`
+3. Added a `Notes (N)` link button to the panel header — joins the existing PiP pop-out button in a shared absolute flex row (top-right corner); clicking navigates to notes dashboard filtered to the current scope (project/day/area)
+4. Build passed ✓
 
-### Phase 2 — Redesign the dashboard
-1. Rewrite `NotesDashboardView` to single-column accordion pattern
-2. Simplify `NoteEditorCard` (remove card shell)
-3. Clean up command palette
-4. Verify build + tests pass
+**Nuance**: Refactored the panel header actions (PiP + Notes + optional close) into a single `panelActions` flex div at `absolute top-0 right-0` so buttons don't need manual offset positioning math.
+
+### Phase 2 — Redesign the dashboard ✅ DONE
+1. Rewrote `NotesDashboardView` as single-column accordion list (max-w-3xl, matches SearchView pattern)
+   - Note rows show title + scope label + timestamp + 2-line excerpt
+   - Clicking a row expands an inline editor (title input + MarkdownEditor + pin/delete)
+   - Clicking again collapses; clicking a different row collapses current and expands new one
+   - Search bar moved to full-width above filter pills
+   - Removed the two-column grid and the Pinned/Recent section split
+2. Simplified `NoteEditorCard` — removed `panel-surface rounded-[28px] p-5` card shell; now just bare editor content (scope label + title + timestamp + body + actions) for embedding
+3. Removed the disabled `note-help` hint item from command palette (empty `note:` query now returns `[]`)
+4. Build + all 7 tests passed ✓
 
 ## Success Criteria
 
