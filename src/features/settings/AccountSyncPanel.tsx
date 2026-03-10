@@ -157,21 +157,13 @@ export const AccountSyncPanel: React.FC<AccountSyncPanelProps> = ({
 
   return (
     <div className={surfaceClass}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">
-            <Cloud size={12} className="text-[var(--accent)]" />
-            Account + Sync
-          </div>
-          <div className="text-sm text-[var(--text-secondary)]">
-            {authSession
-              ? <>Signed in as <span className="font-semibold text-[var(--text-primary)]">{authSession.user.email}</span></>
-              : 'Sign in to sync tasks, projects, and settings across devices.'}
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {!authSession && 'Sign in to sync tasks, projects, and settings across devices.'}
         </div>
-        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-3 py-2 text-right">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Status</div>
-          <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{syncStatus}</div>
+        <div className="flex items-center gap-2 rounded-full border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-3 py-1">
+          <div className="h-2 w-2 rounded-full bg-[var(--accent)]" />
+          <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-primary)]">{syncStatus}</div>
         </div>
       </div>
 
@@ -275,12 +267,14 @@ export const AccountSyncPanel: React.FC<AccountSyncPanelProps> = ({
         </div>
       ) : (
         <div className="rounded-[22px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] p-4">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--accent)_26%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--accent)]">
-            <ShieldCheck size={12} />
-            Connected
-          </div>
-          <div className="text-sm text-[var(--text-secondary)]">
-            Signed in as <span className="font-semibold text-[var(--text-primary)]">{authSession.user.email}</span>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <div className="text-[13px] font-semibold text-[var(--text-primary)]">Connected</div>
+              <div className="text-[13px] text-[var(--text-secondary)]">{authSession.user.email}</div>
+            </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
@@ -324,26 +318,24 @@ export const AccountSyncPanel: React.FC<AccountSyncPanelProps> = ({
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Cloud mode</div>
-          <div className="mt-2 text-base font-semibold text-[var(--text-primary)]">{syncMeta.cloudLinked ? 'Enabled' : 'Local only'}</div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Cloud Mode</div>
+          <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{syncMeta.cloudLinked ? 'Enabled' : 'Local only'}</div>
         </div>
-        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Pending changes</div>
-          <div className="mt-2 text-base font-semibold text-[var(--text-primary)]">{syncMeta.pendingOps.length}</div>
+        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Pending Changes</div>
+          <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{syncMeta.pendingOps.length}</div>
         </div>
-        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Last sync</div>
-          <div className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{syncMeta.lastSyncAt ? new Date(syncMeta.lastSyncAt).toLocaleString() : 'Not yet'}</div>
-        </div>
-        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-4">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Connection target</div>
-          <div className="mt-2 text-sm font-semibold text-[var(--text-primary)]">Same-origin Pages `/api/*`</div>
+        <div className="rounded-[18px] border border-[var(--border-color)] bg-[var(--panel-alt-bg)] px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Last Sync</div>
+          <div className="mt-1 text-[13px] font-semibold text-[var(--text-primary)]">
+            {syncMeta.lastSyncAt ? new Date(syncMeta.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 pt-2">
         <button
           type="button"
           disabled={!authSession}
@@ -351,9 +343,9 @@ export const AccountSyncPanel: React.FC<AccountSyncPanelProps> = ({
             onToggleCloudLinked(!syncMeta.cloudLinked);
             setMessage(syncMeta.cloudLinked ? 'Switched to local-only mode.' : 'Cloud sync mode enabled.');
           }}
-          className="rounded-lg border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-[14px] border border-[var(--border-color)] bg-[var(--panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--panel-alt-bg)] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {syncMeta.cloudLinked ? 'Disable cloud sync' : 'Enable cloud sync'}
+          {syncMeta.cloudLinked ? 'Disable sync' : 'Enable sync'}
         </button>
         <button
           type="button"
@@ -366,9 +358,9 @@ export const AccountSyncPanel: React.FC<AccountSyncPanelProps> = ({
               setMessage(getErrorMessage(error, 'Sync failed.'));
             }
           }}
-          className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-[14px] bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--accent-contrast)] transition disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Run sync now
+          Sync Now
         </button>
       </div>
 
