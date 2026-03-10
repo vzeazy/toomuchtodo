@@ -8,6 +8,81 @@ const mergeByIdPreferLocal = <T extends { id: string }>(localRecords: T[], remot
   return Array.from(merged.values());
 };
 
+export const applyLocalPendingOps = (state: AppStateData, ops: SyncOperation[]): AppStateData => {
+  let nextState = state;
+
+  for (const op of ops) {
+    if (op.entity === 'task') {
+      if (op.action === 'delete') {
+        nextState = {
+          ...nextState,
+          tasks: nextState.tasks.filter((task) => task.id !== op.recordId),
+        };
+        continue;
+      }
+
+      const task = op.payload as Task;
+      const exists = nextState.tasks.some((item) => item.id === op.recordId);
+      nextState = {
+        ...nextState,
+        tasks: exists
+          ? nextState.tasks.map((item) => (item.id === op.recordId ? ({ ...item, ...task, id: item.id }) : item))
+          : [...nextState.tasks, task],
+      };
+      continue;
+    }
+
+    if (op.entity === 'project') {
+      if (op.action === 'delete') {
+        nextState = {
+          ...nextState,
+          projects: nextState.projects.filter((project) => project.id !== op.recordId),
+        };
+        continue;
+      }
+
+      const project = op.payload as Project;
+      const exists = nextState.projects.some((item) => item.id === op.recordId);
+      nextState = {
+        ...nextState,
+        projects: exists
+          ? nextState.projects.map((item) => (item.id === op.recordId ? ({ ...item, ...project, id: item.id }) : item))
+          : [...nextState.projects, project],
+      };
+      continue;
+    }
+
+    if (op.entity === 'note') {
+      if (op.action === 'delete') {
+        nextState = {
+          ...nextState,
+          notes: nextState.notes.filter((note) => note.id !== op.recordId),
+        };
+        continue;
+      }
+
+      const note = op.payload as Note;
+      const exists = nextState.notes.some((item) => item.id === op.recordId);
+      nextState = {
+        ...nextState,
+        notes: exists
+          ? nextState.notes.map((item) => (item.id === op.recordId ? ({ ...item, ...note, id: item.id }) : item))
+          : [...nextState.notes, note],
+      };
+      continue;
+    }
+
+    if (op.entity === 'settings' && op.action === 'upsert') {
+      nextState = {
+        ...nextState,
+        settings: { ...nextState.settings, ...(op.payload as AppStateData['settings']) },
+      };
+    }
+  }
+
+  return nextState;
+};
+
 export const mergeFirstLinkState = (
   localState: AppStateData,
   remoteSnapshot: Pick<AppStateData, 'tasks' | 'projects' | 'notes' | 'settings'>,
