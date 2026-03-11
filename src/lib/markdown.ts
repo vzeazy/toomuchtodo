@@ -67,11 +67,17 @@ export const getMarkdownExcerpt = (value: string, maxLength = 180) => {
   const normalized = value
     .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[`*_>#-]/g, ' ')
+    .replace(/^```[\w-]*\s*$/gm, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^>\s?/gm, ' ')
+    .replace(/^#{1,6}\s+/gm, ' ')
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, ' ')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(^|[^\w])([*_])(.*?)(\2)(?=[^\w]|$)/g, '$1$3')
     .replace(/\s+/g, ' ')
     .trim();
 
   if (!normalized) return 'No notes yet.';
   if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 };

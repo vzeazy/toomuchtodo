@@ -38,6 +38,23 @@ class TestD1Statement {
       },
     };
   }
+
+  async execute() {
+    if (/^\s*select\b/i.test(this.sql)) {
+      const statement = this.db.prepare(this.sql);
+      const results = statement.all(...this.values);
+      return {
+        success: true,
+        results,
+        meta: {
+          changes: 0,
+          last_row_id: 0,
+        },
+      };
+    }
+
+    return this.run();
+  }
 }
 
 export class TestD1Database {
@@ -51,12 +68,12 @@ export class TestD1Database {
     return new TestD1Statement(this.db, sql);
   }
 
-  async batch(statements: Array<{ run: () => Promise<unknown> }>) {
+  async batch(statements: Array<{ execute?: () => Promise<unknown>; run: () => Promise<unknown> }>) {
     this.db.exec('BEGIN');
     try {
       const results = [];
       for (const statement of statements) {
-        results.push(await statement.run());
+        results.push(await (statement.execute ? statement.execute() : statement.run()));
       }
       this.db.exec('COMMIT');
       return results;

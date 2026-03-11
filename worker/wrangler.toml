@@ -13,3 +13,7 @@ APP_SCHEMA_LATEST = "3"
 APP_SCHEMA_MIN_SUPPORTED = "3"
 SESSION_COOKIE_NAME = "tmtd_session"
 SESSION_COOKIE_SAME_SITE = "Lax"
+
+
+[triggers]
+crons = ["0 4 * * *"]

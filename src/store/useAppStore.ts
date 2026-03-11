@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { moveTaskSubtree, moveTaskSubtreePreserveParent, updateTaskParent } from '../features/tasks/taskTree';
 import { authClient, AuthSession } from '../lib/sync/authClient';
 import { appendPendingOps, buildSyncOperations } from '../lib/sync/operations';
-import { applyLocalPendingOps, runSyncOnce } from '../lib/sync/engine';
+import { mergeSyncedStateWithLive, runSyncOnce } from '../lib/sync/engine';
 import { builtInThemes } from '../themes/builtInThemes';
 import {
   AppDataExport,
@@ -26,6 +26,7 @@ import {
 } from '../types';
 import { LocalOnlyDriver } from './storage/localDriver';
 import { APP_SCHEMA_VERSION, createDefaultSyncMeta } from './storage/migrations';
+import { areSettingsEqual } from '../lib/sync/equality';
 
 const driver = new LocalOnlyDriver();
 const CURRENT_VERSION = APP_SCHEMA_VERSION;
@@ -225,7 +226,7 @@ const updateSyncStatus = (value: string) => {
 };
 
 const hasCustomLocalSettings = (state: AppStateData) => (
-  JSON.stringify(state.settings) !== JSON.stringify(INITIAL_SETTINGS)
+  !areSettingsEqual(state.settings, INITIAL_SETTINGS)
 );
 
 const hasLocalSyncSeedData = (state: AppStateData) => (
@@ -412,13 +413,10 @@ export const useAppStore = () => {
       const result = await runSyncOnce(startedState, currentMeta);
       const liveState = getSharedState();
       const liveMeta = getSharedSyncMeta();
-      const startedSet = new Set(startedPendingIds);
-      const nextPendingIds = new Set(result.meta.pendingOps.map((op) => op.id));
-      const appendedDuringRun = liveMeta.pendingOps.filter((op) => !startedSet.has(op.id) && !nextPendingIds.has(op.id));
       const mergedMeta = mergeSyncMetaAfterRun(result.meta, liveMeta, startedPendingIds);
-      const mergedState = appendedDuringRun.length ? applyLocalPendingOps(result.state, appendedDuringRun) : result.state;
+      const mergedState = mergeSyncedStateWithLive(result.state, liveState, mergedMeta.pendingOps);
       setSharedSyncMeta(mergedMeta);
-      setSharedState(liveState === startedState ? result.state : mergedState, { skipQueue: true });
+      setSharedState(mergedState, { skipQueue: true });
 
       if (result.error) {
         updateSyncStatus('error');

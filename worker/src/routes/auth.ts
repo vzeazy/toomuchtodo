@@ -27,26 +27,32 @@ interface AuthUser {
   createdAt: number;
 }
 
+const SESSION_TTL_MS = 60 * 60 * 24 * 30 * 1000;
+const SESSION_REFRESH_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
 const getSessionFromRequest = async (env: Env, request: Request): Promise<UserSession | null> => {
   const cookieName = env.SESSION_COOKIE_NAME || 'tmtd_session';
   const token = readCookie(request, cookieName);
   if (!token) return null;
   const tokenHash = await hash(token);
+  const currentTime = now();
 
   const row = await env.DB.prepare(
-    `SELECT s.id as sessionId, s.user_id as userId, u.email as email, u.created_at as createdAt
+    `SELECT s.id as sessionId, s.user_id as userId, s.expires_at as expiresAt, u.email as email, u.created_at as createdAt
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
-    .bind(tokenHash, now())
-    .first<{ sessionId: string; userId: string; email: string; createdAt: number }>();
+    .bind(tokenHash, currentTime)
+    .first<{ sessionId: string; userId: string; expiresAt: number; email: string; createdAt: number }>();
 
   if (!row) return null;
 
-  await env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
-    .bind(now() + (60 * 60 * 24 * 30 * 1000), row.sessionId)
-    .run();
+  if ((Number(row.expiresAt) - currentTime) <= SESSION_REFRESH_THRESHOLD_MS) {
+    await env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+      .bind(currentTime + SESSION_TTL_MS, row.sessionId)
+      .run();
+  }
 
   return row;
 };
@@ -63,7 +69,7 @@ const createSessionResponse = async (
 
   const statements = [
     env.DB.prepare('INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(sessionId, user.id, tokenHash, ts, ts + (60 * 60 * 24 * 30 * 1000)),
+      .bind(sessionId, user.id, tokenHash, ts, ts + SESSION_TTL_MS),
   ];
 
   if (options.recordSignInAudit) {

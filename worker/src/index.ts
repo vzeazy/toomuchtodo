@@ -1,5 +1,5 @@
 import { authRoutes } from './routes/auth';
-import { syncRoutes } from './routes/sync';
+import { pruneChangeLog, syncRoutes } from './routes/sync';
 import { Env } from './types';
 import { REQUEST_ID_HEADER, errorJson, isAllowedOrigin, json, withRequestId } from './lib';
 
@@ -76,4 +76,7 @@ const fetchHandler = (request: Request, env: Env): Promise<Response> => {
 
 export default {
   fetch: fetchHandler,
+  async scheduled(_controller: ScheduledController, env: Env) {
+    await pruneChangeLog(env);
+  },
 };

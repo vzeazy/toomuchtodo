@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPagesApiHarness } from './support/pagesApiHarness';
 import { mergeFirstLinkState } from '../src/lib/sync/engine';
+import worker from '../worker/src/index';
 
 const strongPassword = 'Strongpass123';
 
@@ -475,4 +476,105 @@ test('first-link merge keeps local tasks while hydrating remote tasks and projec
   assert.deepEqual(merged.notes.map((note) => note.id).sort(), ['local-note', 'remote-note']);
   assert.equal(merged.settings.activeThemeId, 'local-theme');
   assert.equal(merged.settings.taskListMode, 'outline');
+});
+
+
+test('pull cursors stay monotonic even when change timestamps arrive out of order', async () => {
+  const harness = createPagesApiHarness();
+
+  try {
+    const client = harness.createClient();
+    await client.requestJson('/api/auth/sign-up', { body: { email: 'cursor@example.com', password: strongPassword } });
+
+    const bootstrap = await client.requestJson<{ cursor: string }>('/api/sync/bootstrap');
+    const firstPush = await client.requestJson<{ cursor: string }>('/api/sync/push', {
+      body: {
+        deviceId: 'device-cursor',
+        cursor: bootstrap.data.cursor,
+        ops: [{
+          id: 'cursor-op-1',
+          entity: 'task',
+          action: 'upsert',
+          recordId: 'cursor-task-1',
+          payload: baseTask({ id: 'cursor-task-1', title: 'First cursor task' }),
+          deviceId: 'device-cursor',
+          timestamp: 1_700_000_010_500,
+          baseVersion: null,
+        }],
+      },
+    });
+
+    await client.requestJson('/api/sync/push', {
+      body: {
+        deviceId: 'device-cursor',
+        cursor: firstPush.data.cursor,
+        ops: [{
+          id: 'cursor-op-2',
+          entity: 'task',
+          action: 'upsert',
+          recordId: 'cursor-task-2',
+          payload: baseTask({ id: 'cursor-task-2', title: 'Late clock task', updatedAt: 1_700_000_010_400 }),
+          deviceId: 'device-cursor',
+          timestamp: 1_700_000_010_400,
+          baseVersion: null,
+        }],
+      },
+    });
+
+    const pull = await client.requestJson<{ changes: Array<{ recordId: string }> }>(`/api/sync/pull?cursor=${encodeURIComponent(firstPush.data.cursor)}`);
+
+    assert.deepEqual(pull.data.changes.map((change) => change.recordId), ['cursor-task-2']);
+  } finally {
+    harness.close();
+  }
+});
+
+test('session refresh only writes when the cookie is close to expiring', async () => {
+  const harness = createPagesApiHarness();
+
+  try {
+    const client = harness.createClient();
+    const signUp = await client.requestJson<{ user: { id: string } }>('/api/auth/sign-up', {
+      body: { email: 'session-write@example.com', password: strongPassword },
+    });
+
+    const userId = signUp.data.user.id;
+    const before = await harness.env.DB.prepare('SELECT expires_at as expiresAt FROM sessions WHERE user_id = ?')
+      .bind(userId)
+      .first<{ expiresAt: number }>();
+
+    await client.requestJson('/api/auth/session');
+
+    const after = await harness.env.DB.prepare('SELECT expires_at as expiresAt FROM sessions WHERE user_id = ?')
+      .bind(userId)
+      .first<{ expiresAt: number }>();
+
+    assert.equal(after?.expiresAt, before?.expiresAt);
+  } finally {
+    harness.close();
+  }
+});
+
+test('scheduled cleanup prunes stale change_log entries', async () => {
+  const harness = createPagesApiHarness();
+
+  try {
+    await harness.env.DB.prepare(
+      'INSERT INTO change_log (id, user_id, device_id, entity, record_id, action, payload, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('old-log', 'user-1', 'device-1', 'task', 'task-1', 'upsert', JSON.stringify({ id: 'task-1' }), Date.now() - (45 * 24 * 60 * 60 * 1000), 1)
+      .run();
+    await harness.env.DB.prepare(
+      'INSERT INTO change_log (id, user_id, device_id, entity, record_id, action, payload, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind('fresh-log', 'user-1', 'device-1', 'task', 'task-2', 'upsert', JSON.stringify({ id: 'task-2' }), Date.now(), 2)
+      .run();
+
+    await worker.scheduled({} as ScheduledController, harness.env);
+
+    const rows = await harness.env.DB.prepare('SELECT id FROM change_log ORDER BY id ASC').all<{ id: string }>();
+    assert.deepEqual((rows.results || []).map((row) => row.id), ['fresh-log']);
+  } finally {
+    harness.close();
+  }
 });

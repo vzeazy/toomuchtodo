@@ -94,6 +94,20 @@ export const mergeFirstLinkState = (
   settings: { ...remoteSnapshot.settings, ...localState.settings },
 });
 
+export const mergeSyncedStateWithLive = (
+  syncedState: AppStateData,
+  liveState: AppStateData,
+  pendingOps: SyncOperation[],
+) => {
+  const mergedBase: AppStateData = {
+    ...syncedState,
+    themes: liveState.themes,
+    timer: liveState.timer,
+  };
+
+  return pendingOps.length ? applyLocalPendingOps(mergedBase, pendingOps) : mergedBase;
+};
+
 const applyChanges = (state: AppStateData, meta: SyncMeta, changes: SyncOperation[]) => {
   let nextState = { ...state };
   let nextMeta = { ...meta };
@@ -344,12 +358,15 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
   if (nextMeta.pendingOps.length) {
     try {
       const pushResult = await syncApi.push(nextMeta, nextMeta.pendingOps);
-      acceptedOpIds = pushResult.data.acceptedOpIds;
+      acceptedOpIds = [...pushResult.data.acceptedOpIds];
+      const acceptedSet = new Set(pushResult.data.acceptedOpIds);
+      const conflictIds = new Set(pushResult.data.conflicts.map((conflict) => conflict.opId));
       nextMeta = buildDiagnostics(
         {
           ...nextMeta,
           syncCursor: pushResult.data.cursor,
           lastConflicts: pushResult.data.conflicts,
+          pendingOps: nextMeta.pendingOps.filter((op) => !acceptedSet.has(op.id) && !conflictIds.has(op.id)),
         },
         'push',
         'success',
@@ -363,8 +380,6 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
       );
 
       if (pushResult.data.conflicts.length) {
-        const conflictIds = new Set(pushResult.data.conflicts.map((conflict) => conflict.opId));
-        nextMeta.pendingOps = nextMeta.pendingOps.filter((op) => !conflictIds.has(op.id));
         const conflictChanges = pushResult.data.conflicts
           .map(toConflictChange)
           .filter((value): value is SyncOperation => value !== null);
@@ -409,7 +424,6 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
           conflictCount: nextMeta.lastConflicts.length,
         },
       ),
-      pendingOps: nextMeta.pendingOps.filter((op) => !acceptedOpIds.includes(op.id)),
     };
 
     if (pull.data.changes.length) {

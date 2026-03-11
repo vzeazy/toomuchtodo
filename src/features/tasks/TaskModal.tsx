@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Star, Trash2, X, Plus, CornerDownRight, AlignLeft, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import { SmartSelect } from '../../components/SmartSelect';
 import { TaskCheckbox } from '../../components/TaskCheckbox';
@@ -43,6 +43,7 @@ export const TaskModal: React.FC<{
   const [isMetaExpanded, setIsMetaExpanded] = useState(false);
   const [dragTarget, setDragTarget] = useState<string | null>(null);
   const [isDraggingSubtask, setIsDraggingSubtask] = useState(false);
+  const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const tagValue = useMemo(() => task.tags.join(', '), [task.tags]);
   const subtasks = useMemo(() => tasks.filter((t) => t.parentId === task.id), [tasks, task.id]);
@@ -76,6 +77,15 @@ export const TaskModal: React.FC<{
       window.removeEventListener('drop', handleDragEnd);
     };
   }, [isDraggingSubtask]);
+
+  useEffect(() => {
+    if (!isEditingNotes) return;
+    const textarea = notesTextareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    const caret = textarea.value.length;
+    textarea.setSelectionRange(caret, caret);
+  }, [isEditingNotes, task.id]);
 
   const commitSubtask = (keepOpen = false) => {
     const nextTitle = draftSubtaskTitle.trim();
@@ -165,6 +175,7 @@ export const TaskModal: React.FC<{
               </button>
             ) : isEditingNotes ? (
               <textarea
+                ref={notesTextareaRef}
                 value={task.description}
                 onChange={(event) => onUpdate(task.id, { description: event.target.value })}
                 placeholder="Use markdown for headings, checklists, and execution notes."
@@ -172,7 +183,11 @@ export const TaskModal: React.FC<{
                 spellCheck={false}
               />
             ) : (
-              <div className="relative overflow-hidden rounded-xl bg-[rgba(255,255,255,0.02)] p-3">
+              <button
+                type="button"
+                onClick={() => setIsEditingNotes(true)}
+                className="relative block w-full overflow-hidden rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+              >
                 <div
                   className={`markdown-preview text-[12px] leading-relaxed text-[var(--text-secondary)] ${shouldCollapseNotes && !isNotesExpanded ? 'max-h-[180px] overflow-hidden' : ''}`}
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(task.description) }}
@@ -180,7 +195,7 @@ export const TaskModal: React.FC<{
                 {shouldCollapseNotes && !isNotesExpanded && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[var(--panel-bg)] to-transparent" />
                 )}
-              </div>
+              </button>
             )}
           </div>
 

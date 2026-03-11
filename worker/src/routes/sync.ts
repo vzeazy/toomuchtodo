@@ -2,6 +2,8 @@ import { Env, SyncOperation, UserSession } from '../types';
 import { id, isAllowedOrigin, isMutation, json, now, parseJson, rateLimit } from '../lib';
 import { getSchemaMeta } from '../db/schema';
 
+type PreparedStatement = ReturnType<Env['DB']['prepare']>;
+
 interface PushPayload {
   deviceId?: string;
   cursor?: string | null;
@@ -24,13 +26,27 @@ interface PushConflict {
   serverRecord: Record<string, unknown> | null;
 }
 
-const getCursor = (ts: number, opId: string) => `${ts}:${opId}`;
+interface CompactedPushOp extends SyncOperation {
+  sourceIds: string[];
+}
 
-const parseCursor = (cursor: string | null) => {
-  if (!cursor) return { ts: 0, opId: '' };
+const CHANGE_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+const getCursor = (sequence: number) => `${sequence}`;
+
+const parseLegacyCursor = (cursor: string) => {
   const [tsRaw, opId] = cursor.split(':');
   return { ts: Number.parseInt(tsRaw || '0', 10) || 0, opId: opId || '' };
 };
+
+const buildInClause = (count: number) => Array.from({ length: count }, () => '?').join(', ');
+
+const batchRows = (result: unknown) => {
+  const rows = (result as { results?: unknown[] } | null)?.results;
+  return Array.isArray(rows) ? rows : [];
+};
+
+const getOpKey = (op: Pick<SyncOperation, 'entity' | 'recordId'>) => `${op.entity}:${op.recordId}`;
 
 const toTaskRow = (record: Record<string, unknown>) => ({
   id: String(record.id || ''),
@@ -124,41 +140,6 @@ const noteRowToRecord = (row: any) => ({
   syncVersion: Number(row.version),
 });
 
-const readCurrentRecord = async (
-  env: Env,
-  userId: string,
-  entity: SyncOperation['entity'],
-  recordId: string,
-): Promise<StoredRecord> => {
-  if (entity === 'task') {
-    const row = await env.DB.prepare('SELECT * FROM tasks WHERE user_id = ? AND id = ?')
-      .bind(userId, recordId)
-      .first<any>();
-    return row ? { version: Number(row.version), record: taskRowToRecord(row) } : { version: null, record: null };
-  }
-
-  if (entity === 'project') {
-    const row = await env.DB.prepare('SELECT * FROM projects WHERE user_id = ? AND id = ?')
-      .bind(userId, recordId)
-      .first<any>();
-    return row ? { version: Number(row.version), record: projectRowToRecord(row) } : { version: null, record: null };
-  }
-
-  if (entity === 'note') {
-    const row = await env.DB.prepare('SELECT * FROM notes WHERE user_id = ? AND id = ?')
-      .bind(userId, recordId)
-      .first<any>();
-    return row ? { version: Number(row.version), record: noteRowToRecord(row) } : { version: null, record: null };
-  }
-
-  const row = await env.DB.prepare('SELECT payload, version FROM settings WHERE user_id = ? AND id = ?')
-    .bind(userId, recordId)
-    .first<{ payload: string; version: number }>();
-  return row
-    ? { version: Number(row.version), record: JSON.parse(row.payload) as Record<string, unknown> }
-    : { version: null, record: null };
-};
-
 const buildConflict = (op: SyncOperation, stored: StoredRecord): PushConflict => ({
   opId: op.id,
   entity: op.entity,
@@ -170,34 +151,154 @@ const buildConflict = (op: SyncOperation, stored: StoredRecord): PushConflict =>
   serverRecord: stored.record,
 });
 
-const pushOne = async (env: Env, userId: string, op: SyncOperation) => {
+const compactIncomingOps = (ops: SyncOperation[], deviceId: string) => {
+  const compacted: CompactedPushOp[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const op of ops) {
+    const opId = op.id || id('op');
+    const normalized: CompactedPushOp = {
+      ...op,
+      id: opId,
+      deviceId,
+      sourceIds: [opId],
+    };
+    const key = getOpKey(normalized);
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex === undefined) {
+      indexByKey.set(key, compacted.length);
+      compacted.push(normalized);
+      continue;
+    }
+
+    const existing = compacted[existingIndex];
+    compacted[existingIndex] = {
+      ...normalized,
+      baseVersion: typeof existing.baseVersion === 'number'
+        ? existing.baseVersion
+        : normalizeBaseVersion(normalized.baseVersion),
+      sourceIds: [...existing.sourceIds, ...normalized.sourceIds],
+    };
+  }
+
+  return compacted;
+};
+
+const readLatestSequence = async (env: Env, userId: string) => {
+  const latest = await env.DB.prepare('SELECT sequence FROM change_log WHERE user_id = ? ORDER BY sequence DESC LIMIT 1')
+    .bind(userId)
+    .first<{ sequence: number }>();
+  return Number(latest?.sequence || 0);
+};
+
+const resolveCursorSequence = async (env: Env, userId: string, rawCursor: string | null) => {
+  if (!rawCursor) return 0;
+  if (/^\d+$/.test(rawCursor)) return Number.parseInt(rawCursor, 10) || 0;
+
+  const legacy = parseLegacyCursor(rawCursor);
+  const exact = await env.DB.prepare(
+    'SELECT sequence FROM change_log WHERE user_id = ? AND updated_at = ? AND id = ? LIMIT 1',
+  )
+    .bind(userId, legacy.ts, legacy.opId)
+    .first<{ sequence: number }>();
+
+  if (exact?.sequence) return Number(exact.sequence);
+
+  const approximate = await env.DB.prepare(
+    `SELECT COALESCE(MAX(sequence), 0) as sequence
+     FROM change_log
+     WHERE user_id = ?
+       AND (updated_at < ? OR (updated_at = ? AND id <= ?))`,
+  )
+    .bind(userId, legacy.ts, legacy.ts, legacy.opId)
+    .first<{ sequence: number }>();
+
+  return Number(approximate?.sequence || 0);
+};
+
+const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp[]) => {
+  const statements: PreparedStatement[] = [];
+  const groups = new Map<SyncOperation['entity'], string[]>();
+
+  for (const op of ops) {
+    const ids = groups.get(op.entity) || [];
+    ids.push(op.recordId);
+    groups.set(op.entity, ids);
+  }
+
+  for (const entity of ['task', 'project', 'note', 'settings'] as const) {
+    const ids = groups.get(entity);
+    if (!ids?.length) continue;
+
+    const inClause = buildInClause(ids.length);
+    if (entity === 'task') {
+      statements.push(env.DB.prepare(`SELECT * FROM tasks WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
+      continue;
+    }
+    if (entity === 'project') {
+      statements.push(env.DB.prepare(`SELECT * FROM projects WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
+      continue;
+    }
+    if (entity === 'note') {
+      statements.push(env.DB.prepare(`SELECT * FROM notes WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
+      continue;
+    }
+    statements.push(env.DB.prepare(`SELECT id, payload, version FROM settings WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
+  }
+
+  if (!statements.length) return new Map<string, StoredRecord>();
+
+  const results = await env.DB.batch(statements);
+  const currentRecords = new Map<string, StoredRecord>();
+  let resultIndex = 0;
+
+  for (const entity of ['task', 'project', 'note', 'settings'] as const) {
+    const ids = groups.get(entity);
+    if (!ids?.length) continue;
+    const rows = batchRows(results[resultIndex]);
+    resultIndex += 1;
+
+    for (const row of rows as any[]) {
+      if (entity === 'task') {
+        currentRecords.set(`${entity}:${row.id}`, { version: Number(row.version), record: taskRowToRecord(row) });
+        continue;
+      }
+      if (entity === 'project') {
+        currentRecords.set(`${entity}:${row.id}`, { version: Number(row.version), record: projectRowToRecord(row) });
+        continue;
+      }
+      if (entity === 'note') {
+        currentRecords.set(`${entity}:${row.id}`, { version: Number(row.version), record: noteRowToRecord(row) });
+        continue;
+      }
+      currentRecords.set(`${entity}:${row.id}`, {
+        version: Number(row.version),
+        record: JSON.parse(String(row.payload || '{}')) as Record<string, unknown>,
+      });
+    }
+  }
+
+  return currentRecords;
+};
+
+const buildWriteStatements = (
+  env: Env,
+  userId: string,
+  op: CompactedPushOp,
+  current: StoredRecord,
+) => {
   const ts = op.timestamp || now();
-  const opId = op.id || id('op');
-  const duplicate = await env.DB.prepare('SELECT id FROM change_log WHERE user_id = ? AND id = ?')
-    .bind(userId, opId)
-    .first<{ id: string }>();
-  if (duplicate) {
-    return { accepted: true, conflict: null as PushConflict | null, opId };
-  }
-
-  const current = await readCurrentRecord(env, userId, op.entity, op.recordId);
-  const baseVersion = normalizeBaseVersion(op.baseVersion);
-  if (current.version !== baseVersion) {
-    return { accepted: false, conflict: buildConflict(op, current), opId };
-  }
-
   const nextVersion = (current.version || 0) + 1;
-  let changePayload: Record<string, unknown>;
+  let changePayload: Record<string, unknown> = {};
+  const statements: PreparedStatement[] = [];
 
   if (op.entity === 'task') {
     if (op.action === 'delete') {
-      if (!current.record) {
-        return { accepted: true, conflict: null as PushConflict | null, opId };
-      }
       changePayload = { deletedAt: ts };
-      await env.DB.prepare('UPDATE tasks SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
-        .bind(ts, ts, nextVersion, op.recordId, userId)
-        .run();
+      statements.push(
+        env.DB.prepare('UPDATE tasks SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
+          .bind(ts, ts, nextVersion, op.recordId, userId),
+      );
     } else {
       const task = toTaskRow(op.payload || {});
       changePayload = {
@@ -217,37 +318,36 @@ const pushOne = async (env: Env, userId: string, op: SyncOperation) => {
         updatedAt: task.updatedAt,
         deletedAt: task.deletedAt,
       };
-      await env.DB.prepare(
-        `INSERT INTO tasks (id, user_id, title, description, status, is_starred, project_id, area, due_date, day_part, parent_id, collapsed, created_at, tags, updated_at, deleted_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, id) DO UPDATE SET
-         title=excluded.title,
-         description=excluded.description,
-         status=excluded.status,
-         is_starred=excluded.is_starred,
-         project_id=excluded.project_id,
-         area=excluded.area,
-         due_date=excluded.due_date,
-         day_part=excluded.day_part,
-         parent_id=excluded.parent_id,
-         collapsed=excluded.collapsed,
-         tags=excluded.tags,
-         updated_at=excluded.updated_at,
-         deleted_at=excluded.deleted_at,
-         version=excluded.version`,
-      )
-        .bind(task.id || op.recordId, userId, task.title, task.description, task.status, task.isStarred, task.projectId, task.area, task.dueDate, task.dayPart, task.parentId, task.collapsed, task.createdAt, task.tags, task.updatedAt, task.deletedAt, nextVersion)
-        .run();
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO tasks (id, user_id, title, description, status, is_starred, project_id, area, due_date, day_part, parent_id, collapsed, created_at, tags, updated_at, deleted_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, id) DO UPDATE SET
+           title=excluded.title,
+           description=excluded.description,
+           status=excluded.status,
+           is_starred=excluded.is_starred,
+           project_id=excluded.project_id,
+           area=excluded.area,
+           due_date=excluded.due_date,
+           day_part=excluded.day_part,
+           parent_id=excluded.parent_id,
+           collapsed=excluded.collapsed,
+           tags=excluded.tags,
+           updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at,
+           version=excluded.version`,
+        )
+          .bind(task.id || op.recordId, userId, task.title, task.description, task.status, task.isStarred, task.projectId, task.area, task.dueDate, task.dayPart, task.parentId, task.collapsed, task.createdAt, task.tags, task.updatedAt, task.deletedAt, nextVersion),
+      );
     }
   } else if (op.entity === 'project') {
     if (op.action === 'delete') {
-      if (!current.record) {
-        return { accepted: true, conflict: null as PushConflict | null, opId };
-      }
       changePayload = { deletedAt: ts };
-      await env.DB.prepare('UPDATE projects SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
-        .bind(ts, ts, nextVersion, op.recordId, userId)
-        .run();
+      statements.push(
+        env.DB.prepare('UPDATE projects SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
+          .bind(ts, ts, nextVersion, op.recordId, userId),
+      );
     } else {
       const project = toProjectRow(op.payload || {});
       changePayload = {
@@ -258,29 +358,28 @@ const pushOne = async (env: Env, userId: string, op: SyncOperation) => {
         updatedAt: project.updatedAt,
         deletedAt: project.deletedAt,
       };
-      await env.DB.prepare(
-        `INSERT INTO projects (id, user_id, name, color, parent_id, updated_at, deleted_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, id) DO UPDATE SET
-         name=excluded.name,
-         color=excluded.color,
-         parent_id=excluded.parent_id,
-         updated_at=excluded.updated_at,
-         deleted_at=excluded.deleted_at,
-         version=excluded.version`,
-      )
-        .bind(project.id || op.recordId, userId, project.name, project.color, project.parentId, project.updatedAt, project.deletedAt, nextVersion)
-        .run();
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO projects (id, user_id, name, color, parent_id, updated_at, deleted_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, id) DO UPDATE SET
+           name=excluded.name,
+           color=excluded.color,
+           parent_id=excluded.parent_id,
+           updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at,
+           version=excluded.version`,
+        )
+          .bind(project.id || op.recordId, userId, project.name, project.color, project.parentId, project.updatedAt, project.deletedAt, nextVersion),
+      );
     }
   } else if (op.entity === 'note') {
     if (op.action === 'delete') {
-      if (!current.record) {
-        return { accepted: true, conflict: null as PushConflict | null, opId };
-      }
       changePayload = { deletedAt: ts };
-      await env.DB.prepare('UPDATE notes SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
-        .bind(ts, ts, nextVersion, op.recordId, userId)
-        .run();
+      statements.push(
+        env.DB.prepare('UPDATE notes SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
+          .bind(ts, ts, nextVersion, op.recordId, userId),
+      );
     } else {
       const note = toNoteRow(op.payload || {});
       changePayload = {
@@ -294,48 +393,47 @@ const pushOne = async (env: Env, userId: string, op: SyncOperation) => {
         updatedAt: note.updatedAt,
         deletedAt: note.deletedAt,
       };
-      await env.DB.prepare(
-        `INSERT INTO notes (id, user_id, title, body, scope_type, scope_ref, pinned, created_at, updated_at, deleted_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO notes (id, user_id, title, body, scope_type, scope_ref, pinned, created_at, updated_at, deleted_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, id) DO UPDATE SET
+           title=excluded.title,
+           body=excluded.body,
+           scope_type=excluded.scope_type,
+           scope_ref=excluded.scope_ref,
+           pinned=excluded.pinned,
+           updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at,
+           version=excluded.version`,
+        )
+          .bind(note.id || op.recordId, userId, note.title, note.body, note.scopeType, note.scopeRef, note.pinned, note.createdAt, note.updatedAt, note.deletedAt, nextVersion),
+      );
+    }
+  } else if (op.action === 'upsert') {
+    changePayload = { ...(op.payload || {}) };
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO settings (id, user_id, payload, updated_at, deleted_at, version)
+         VALUES (?, ?, ?, ?, NULL, ?)
          ON CONFLICT(user_id, id) DO UPDATE SET
-         title=excluded.title,
-         body=excluded.body,
-         scope_type=excluded.scope_type,
-         scope_ref=excluded.scope_ref,
-         pinned=excluded.pinned,
+         payload=excluded.payload,
          updated_at=excluded.updated_at,
          deleted_at=excluded.deleted_at,
          version=excluded.version`,
       )
-        .bind(note.id || op.recordId, userId, note.title, note.body, note.scopeType, note.scopeRef, note.pinned, note.createdAt, note.updatedAt, note.deletedAt, nextVersion)
-        .run();
-    }
-  } else {
-    if (op.action !== 'upsert') {
-      return { accepted: true, conflict: null as PushConflict | null, opId };
-    }
-
-    changePayload = { ...(op.payload || {}) };
-    await env.DB.prepare(
-      `INSERT INTO settings (id, user_id, payload, updated_at, deleted_at, version)
-       VALUES (?, ?, ?, ?, NULL, ?)
-       ON CONFLICT(user_id, id) DO UPDATE SET
-       payload=excluded.payload,
-       updated_at=excluded.updated_at,
-       deleted_at=excluded.deleted_at,
-       version=excluded.version`,
-    )
-      .bind('settings', userId, JSON.stringify(op.payload || {}), ts, nextVersion)
-      .run();
+        .bind('settings', userId, JSON.stringify(op.payload || {}), ts, nextVersion),
+    );
   }
 
-  await env.DB.prepare(
-    'INSERT INTO change_log (id, user_id, device_id, entity, record_id, action, payload, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  )
-    .bind(opId, userId, op.deviceId || 'unknown', op.entity, op.recordId, op.action, JSON.stringify(changePayload), ts, nextVersion)
-    .run();
+  statements.push(
+    env.DB.prepare(
+      'INSERT INTO change_log (id, user_id, device_id, entity, record_id, action, payload, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(op.id, userId, op.deviceId || 'unknown', op.entity, op.recordId, op.action, JSON.stringify(changePayload), ts, nextVersion),
+  );
 
-  return { accepted: true, conflict: null as PushConflict | null, opId };
+  return statements;
 };
 
 const readSnapshot = async (env: Env, userId: string) => {
@@ -393,6 +491,11 @@ const readSnapshot = async (env: Env, userId: string) => {
   return { tasks, projects, notes, settings, settingsVersion: settingsRow ? Number(settingsRow.version) : null };
 };
 
+export const pruneChangeLog = async (env: Env, retentionMs = CHANGE_LOG_RETENTION_MS) => {
+  const cutoff = now() - retentionMs;
+  await env.DB.prepare('DELETE FROM change_log WHERE updated_at < ?').bind(cutoff).run();
+};
+
 const applySecurity = (env: Env, request: Request, session: UserSession) => {
   if (isMutation(request.method) && !isAllowedOrigin(env, request)) {
     return json({ error: 'forbidden_origin' }, { status: 403 });
@@ -411,15 +514,13 @@ export const syncRoutes = {
 
     const schema = await getSchemaMeta(env);
     const snapshot = await readSnapshot(env, session.userId);
-
-    const latestLog = await env.DB.prepare('SELECT id, updated_at as updatedAt FROM change_log WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1')
-      .bind(session.userId)
-      .first<{ id: string; updatedAt: number }>();
+    const latestSequence = await readLatestSequence(env, session.userId);
 
     return json({
       serverTime: now(),
-      cursor: latestLog ? getCursor(Number(latestLog.updatedAt), latestLog.id) : '0:',
+      cursor: getCursor(latestSequence),
       snapshot,
+      settingsVersion: snapshot.settingsVersion,
       schema,
     });
   },
@@ -434,27 +535,60 @@ export const syncRoutes = {
 
     await registerDevice(env, session.userId, deviceId);
 
-    const ops = Array.isArray(payload?.ops) ? payload.ops : [];
-    const acceptedOpIds: string[] = [];
-    const conflicts: PushConflict[] = [];
-    for (const op of ops) {
-      const result = await pushOne(env, session.userId, { ...op, deviceId });
-      if (result.accepted) {
-        acceptedOpIds.push(result.opId);
-        continue;
-      }
-      if (result.conflict) conflicts.push(result.conflict);
+    const ops = Array.isArray(payload?.ops)
+      ? payload.ops.filter((op): op is SyncOperation => Boolean(op?.recordId && op?.entity && op?.action && op?.id))
+      : [];
+    const duplicateIds = ops.map((op) => op.id);
+    const duplicateIdSet = new Set<string>();
+    if (duplicateIds.length) {
+      const duplicateQuery = await env.DB.prepare(
+        `SELECT id FROM change_log WHERE user_id = ? AND id IN (${buildInClause(duplicateIds.length)})`,
+      )
+        .bind(session.userId, ...duplicateIds)
+        .all<{ id: string }>();
+      for (const row of duplicateQuery.results || []) duplicateIdSet.add(String(row.id));
     }
 
-    const latest = await env.DB.prepare('SELECT id, updated_at as updatedAt FROM change_log WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1')
-      .bind(session.userId)
-      .first<{ id: string; updatedAt: number }>();
+    const pendingOps = compactIncomingOps(ops.filter((op) => !duplicateIdSet.has(op.id)), deviceId);
+    const acceptedOpIds: string[] = duplicateIds.filter((opId) => duplicateIdSet.has(opId));
+    const conflicts: PushConflict[] = [];
+
+    const currentRecords = await readCurrentRecords(env, session.userId, pendingOps);
+    const writeStatements: PreparedStatement[] = [];
+
+    for (const op of pendingOps) {
+      const current = currentRecords.get(getOpKey(op)) || { version: null, record: null };
+      const baseVersion = normalizeBaseVersion(op.baseVersion);
+      if (current.version !== baseVersion) {
+        conflicts.push(...op.sourceIds.map((sourceId) => ({ ...buildConflict(op, current), opId: sourceId })));
+        continue;
+      }
+
+      if (op.entity !== 'settings' && op.action === 'delete' && !current.record) {
+        acceptedOpIds.push(...op.sourceIds);
+        continue;
+      }
+
+      if (op.entity === 'settings' && op.action !== 'upsert') {
+        acceptedOpIds.push(...op.sourceIds);
+        continue;
+      }
+
+      acceptedOpIds.push(...op.sourceIds);
+      writeStatements.push(...buildWriteStatements(env, session.userId, op, current));
+    }
+
+    if (writeStatements.length) {
+      await env.DB.batch(writeStatements);
+    }
+
+    const latestSequence = await readLatestSequence(env, session.userId);
 
     return json({
       accepted: acceptedOpIds.length,
       acceptedOpIds,
       conflicts,
-      cursor: latest ? getCursor(Number(latest.updatedAt), latest.id) : '0:',
+      cursor: getCursor(latestSequence),
     });
   },
 
@@ -464,17 +598,17 @@ export const syncRoutes = {
 
     const schema = await getSchemaMeta(env);
     const url = new URL(request.url);
-    const cursor = parseCursor(url.searchParams.get('cursor'));
+    const cursorSequence = await resolveCursorSequence(env, session.userId, url.searchParams.get('cursor'));
 
     const rows = await env.DB.prepare(
-      `SELECT id, entity, record_id as recordId, action, payload, updated_at as updatedAt, device_id as deviceId, version
+      `SELECT sequence, id, entity, record_id as recordId, action, payload, updated_at as updatedAt, device_id as deviceId, version
        FROM change_log
        WHERE user_id = ?
-         AND (updated_at > ? OR (updated_at = ? AND id > ?))
-       ORDER BY updated_at ASC, id ASC
+         AND sequence > ?
+       ORDER BY sequence ASC
        LIMIT 500`,
     )
-      .bind(session.userId, cursor.ts, cursor.ts, cursor.opId)
+      .bind(session.userId, cursorSequence)
       .all();
 
     const changes = (rows.results || []).map((row: any) => ({
@@ -488,10 +622,10 @@ export const syncRoutes = {
       version: typeof row.version === 'number' ? Number(row.version) : null,
     }));
 
-    const last = changes[changes.length - 1];
+    const lastRow = (rows.results || [])[Math.max(0, (rows.results || []).length - 1)] as { sequence?: number } | undefined;
 
     return json({
-      cursor: last ? getCursor(last.timestamp, last.id) : url.searchParams.get('cursor') || '0:',
+      cursor: lastRow?.sequence ? getCursor(Number(lastRow.sequence)) : getCursor(cursorSequence),
       changes,
       stats: { conflicts: 0 },
       schema,

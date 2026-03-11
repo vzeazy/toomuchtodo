@@ -1,4 +1,5 @@
 import { AppStateData, SyncMeta, SyncOperation } from '../../types';
+import { areNotesEqual, areProjectsEqual, areSettingsEqual, areTasksEqual } from './equality';
 
 const uid = () => `op-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -6,6 +7,14 @@ const withPayload = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object') return {};
   return value as Record<string, unknown>;
 };
+
+const getOpKey = (op: Pick<SyncOperation, 'entity' | 'recordId'>) => `${op.entity}:${op.recordId}`;
+
+const pickBaseVersion = (existing: SyncOperation, incoming: SyncOperation) => (
+  typeof existing.baseVersion === 'number'
+    ? existing.baseVersion
+    : (typeof incoming.baseVersion === 'number' ? incoming.baseVersion : null)
+);
 
 export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta: SyncMeta): SyncOperation[] => {
   if (!meta.cloudLinked || meta.mode !== 'account') return [];
@@ -17,7 +26,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
   const nextTasks = new Map(next.tasks.map((task) => [task.id, task]));
   for (const [id, nextTask] of nextTasks) {
     const prevTask = prevTasks.get(id);
-    if (!prevTask || JSON.stringify(prevTask) !== JSON.stringify(nextTask)) {
+    if (!prevTask || !areTasksEqual(prevTask, nextTask)) {
       ops.push({
         id: uid(),
         entity: 'task',
@@ -50,7 +59,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
   const nextProjects = new Map(next.projects.map((project) => [project.id, project]));
   for (const [id, nextProject] of nextProjects) {
     const prevProject = prevProjects.get(id);
-    if (!prevProject || JSON.stringify(prevProject) !== JSON.stringify(nextProject)) {
+    if (!prevProject || !areProjectsEqual(prevProject, nextProject)) {
       ops.push({
         id: uid(),
         entity: 'project',
@@ -83,7 +92,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
   const nextNotes = new Map(next.notes.map((note) => [note.id, note]));
   for (const [id, nextNote] of nextNotes) {
     const prevNote = prevNotes.get(id);
-    if (!prevNote || JSON.stringify(prevNote) !== JSON.stringify(nextNote)) {
+    if (!prevNote || !areNotesEqual(prevNote, nextNote)) {
       ops.push({
         id: uid(),
         entity: 'note',
@@ -112,7 +121,7 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
     }
   }
 
-  if (JSON.stringify(prev.settings) !== JSON.stringify(next.settings)) {
+  if (!areSettingsEqual(prev.settings, next.settings)) {
     ops.push({
       id: uid(),
       entity: 'settings',
@@ -128,10 +137,44 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
   return ops;
 };
 
+export const compactSyncOperations = (ops: SyncOperation[]): SyncOperation[] => {
+  if (ops.length < 2) return ops;
+
+  const compacted = [...ops];
+  const indexByKey = new Map<string, number>();
+
+  for (let index = 0; index < compacted.length; index += 1) {
+    const op = compacted[index];
+    const key = getOpKey(op);
+    const existingIndex = indexByKey.get(key);
+
+    if (existingIndex === undefined) {
+      indexByKey.set(key, index);
+      continue;
+    }
+
+    const existing = compacted[existingIndex];
+    compacted[existingIndex] = {
+      ...op,
+      baseVersion: pickBaseVersion(existing, op),
+    };
+    compacted.splice(index, 1);
+    index -= 1;
+
+    for (const [knownKey, knownIndex] of indexByKey.entries()) {
+      if (knownIndex > index) {
+        indexByKey.set(knownKey, knownIndex - 1);
+      }
+    }
+  }
+
+  return compacted;
+};
+
 export const appendPendingOps = (meta: SyncMeta, ops: SyncOperation[]): SyncMeta => {
   if (!ops.length) return meta;
   return {
     ...meta,
-    pendingOps: [...meta.pendingOps, ...ops],
+    pendingOps: compactSyncOperations([...meta.pendingOps, ...ops]),
   };
 };
