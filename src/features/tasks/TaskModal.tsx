@@ -83,8 +83,16 @@ export const TaskModal: React.FC<{
     const textarea = notesTextareaRef.current;
     if (!textarea) return;
     textarea.focus();
-    const caret = textarea.value.length;
-    textarea.setSelectionRange(caret, caret);
+    
+    // Auto-resize textarea to fit content initially
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight}px`;
+    
+    // Only move caret to end if we just switched to edit mode and it's not already set
+    if (textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
+      const caret = textarea.value.length;
+      textarea.setSelectionRange(caret, caret);
+    }
   }, [isEditingNotes, task.id]);
 
   const commitSubtask = (keepOpen = false) => {
@@ -132,12 +140,29 @@ export const TaskModal: React.FC<{
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto px-8 pb-4">
           <div className="mb-6">
-            <input
-              type="text"
+            <textarea
               value={task.title}
-              onChange={(event) => onUpdate(task.id, { title: event.target.value })}
-              className="w-full select-all bg-transparent text-[22px] font-semibold leading-[1.2] tracking-[-0.02em] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+              onChange={(event) => {
+                onUpdate(task.id, { title: event.target.value.replace(/\n/g, '') });
+                event.target.style.height = 'auto';
+                event.target.style.height = `${event.target.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+              }}
+              ref={(el) => {
+                if (el) {
+                  el.style.height = 'auto';
+                  el.style.height = `${el.scrollHeight}px`;
+                }
+              }}
+              className="w-full resize-none bg-transparent text-[22px] font-semibold leading-[1.2] tracking-[-0.02em] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] overflow-hidden"
+              rows={1}
               placeholder="Task title..."
+              spellCheck={false}
             />
           </div>
 
@@ -158,10 +183,16 @@ export const TaskModal: React.FC<{
                 <button
                   type="button"
                   onClick={() => setIsEditingNotes((value) => !value)}
-                  className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+                  className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors ${isEditingNotes ? 'text-[var(--accent)] hover:text-[var(--accent-hover)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                 >
-                  <Pencil size={11} />
-                  {isEditingNotes ? 'Done' : hasNotes ? 'Edit' : 'Add'}
+                  {isEditingNotes ? (
+                    'Done'
+                  ) : (
+                    <>
+                      <Pencil size={11} />
+                      {hasNotes ? 'Edit' : 'Add'}
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -169,33 +200,62 @@ export const TaskModal: React.FC<{
               <button
                 type="button"
                 onClick={() => setIsEditingNotes(true)}
-                className="w-full rounded-xl border border-dashed soft-divider px-3 py-2.5 text-left text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-secondary)]"
+                className="w-full rounded-xl border border-dashed soft-divider px-3 py-2.5 text-left text-[12px] text-[var(--text-muted)] transition-all hover:bg-[rgba(255,255,255,0.02)] hover:border-[var(--accent)] hover:text-[var(--text-secondary)] cursor-text"
               >
-                Add notes for execution details or checklists
+                Add notes for execution details or checklists...
               </button>
             ) : isEditingNotes ? (
               <textarea
                 ref={notesTextareaRef}
                 value={task.description}
-                onChange={(event) => onUpdate(task.id, { description: event.target.value })}
+                onBlur={() => {
+                  // Small delay to allow 'Done' button clicks to register first before blurring
+                  setTimeout(() => setIsEditingNotes(false), 100);
+                }}
+                onChange={(event) => {
+                  onUpdate(task.id, { description: event.target.value });
+                  event.target.style.height = 'auto';
+                  event.target.style.height = `${event.target.scrollHeight}px`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
                 placeholder="Use markdown for headings, checklists, and execution notes."
-                className={`markdown-preview w-full resize-y rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)] ${hasNotes ? 'min-h-[140px]' : 'min-h-[88px]'}`}
+                className={`markdown-preview w-full rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none placeholder:text-[var(--text-muted)] focus:shadow-[inset_0_0_0_1px_var(--accent)] transition-shadow ${hasNotes ? 'min-h-[140px]' : 'min-h-[88px]'}`}
+                style={{ resize: 'none', overflow: 'hidden' }}
                 spellCheck={false}
               />
             ) : (
-              <button
-                type="button"
-                onClick={() => setIsEditingNotes(true)}
-                className="relative block w-full overflow-hidden rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
+              <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setIsEditingNotes(true);
+                  }
+                }}
+                onClick={(e) => {
+                  // Prevent entering edit mode if the user is just selecting text
+                  if (window.getSelection()?.toString()) return;
+                  // Prevent entering edit mode if they clicked a link
+                  if ((e.target as HTMLElement).closest('a')) return;
+                  
+                  setIsEditingNotes(true);
+                }}
+                className="relative block w-full outline-none overflow-hidden rounded-xl bg-[rgba(255,255,255,0.02)] p-3 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)] cursor-text group"
               >
                 <div
-                  className={`markdown-preview text-[12px] leading-relaxed text-[var(--text-secondary)] ${shouldCollapseNotes && !isNotesExpanded ? 'max-h-[180px] overflow-hidden' : ''}`}
+                  className={`markdown-preview text-[12px] leading-relaxed text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors ${shouldCollapseNotes && !isNotesExpanded ? 'max-h-[180px] overflow-hidden' : ''}`}
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(task.description) }}
                 />
                 {shouldCollapseNotes && !isNotesExpanded && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[var(--panel-bg)] to-transparent" />
                 )}
-              </button>
+              </div>
             )}
           </div>
 
