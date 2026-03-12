@@ -36,7 +36,8 @@ export const SidebarItem: React.FC<{
         const id = event.dataTransfer.getData('taskId');
         if (id && onDrop) onDrop(id);
       }}
-      className={`group relative flex cursor-pointer items-center justify-between rounded-2xl px-3 py-2.5 transition-all ${active ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[var(--text-primary)]'} ${isOver ? 'bg-[var(--accent-soft)]/90 ring-1 ring-[var(--accent)]/65 shadow-[0_0_0_1px_var(--accent-soft)]' : ''} ${className}`}
+      data-active={active ? 'true' : 'false'}
+      className={`sidebar-item group relative flex cursor-pointer items-center justify-between rounded-2xl px-3 py-2.5 transition-all ${active ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'text-[var(--text-secondary)] hover:bg-[rgba(255,255,255,0.03)] hover:text-[var(--text-primary)]'} ${isOver ? 'bg-[var(--accent-soft)]/90 ring-1 ring-[var(--accent)]/65 shadow-[0_0_0_1px_var(--accent-soft)]' : ''} ${className}`}
       style={{ paddingLeft: `${12 + (indent * 18)}px` }}
     >
       {isOver && (

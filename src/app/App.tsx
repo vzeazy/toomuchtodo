@@ -169,6 +169,31 @@ export default function App() {
 
   const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
   const themeVariables = useMemo(() => getThemeVariables(activeTheme), [activeTheme]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    root.style.colorScheme = activeTheme.mode;
+    root.dataset.themeId = activeTheme.id;
+    root.dataset.themeMode = activeTheme.mode;
+    body.dataset.themeId = activeTheme.id;
+    body.dataset.themeMode = activeTheme.mode;
+    Object.entries(themeVariables).forEach(([key, value]) => {
+      root.style.setProperty(key, value);
+      body.style.setProperty(key, value);
+    });
+    return () => {
+      delete root.dataset.themeId;
+      delete root.dataset.themeMode;
+      delete body.dataset.themeId;
+      delete body.dataset.themeMode;
+      Object.keys(themeVariables).forEach((key) => {
+        root.style.removeProperty(key);
+        body.style.removeProperty(key);
+      });
+    };
+  }, [activeTheme.id, activeTheme.mode, themeVariables]);
+
   const isCompactViewport = useCallback(() => typeof window !== 'undefined' && window.innerWidth < 1024, []);
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((prev) => !prev);
@@ -572,7 +597,12 @@ export default function App() {
   }, [currentView, deleteProject, navigate, projects, selectedProjectId, tasks]);
 
   return (
-    <div className="app-frame flex h-screen flex-col select-none" style={themeVariables}>
+    <div
+      className="app-frame flex h-screen flex-col select-none"
+      style={themeVariables}
+      data-theme-id={activeTheme.id}
+      data-theme-mode={activeTheme.mode}
+    >
       {showShortcutsModal && <ShortcutsModal onClose={() => setShowShortcutsModal(false)} />}
       {showAccountSyncModal && (
         <AccountSyncModal
@@ -1008,7 +1038,7 @@ export default function App() {
         </aside>
 
         <main className="flex-1 relative flex flex-col min-w-0" style={{ paddingRight: 'var(--timer-bar-width, 0px)', transition: 'padding-right 0.4s cubic-bezier(0.16,1,0.3,1)' }}>
-          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
+          <div className="notebook-page flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
             {currentView === 'planner' && (
               <PlannerView
                 weekDays={weekDays}
