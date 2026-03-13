@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPagesApiHarness } from './support/pagesApiHarness';
+import { applyMigrations, TestD1Database } from './support/d1';
 import { mergeFirstLinkState } from '../src/lib/sync/engine';
 import worker from '../worker/src/index';
+import type { Env } from '../worker/src/types';
 
 const strongPassword = 'Strongpass123';
 
@@ -395,6 +397,89 @@ test('same-record concurrent edits return a structured version conflict with the
     assert.equal(conflicted.data.conflicts[0]?.serverRecord.title, 'Device A wins');
   } finally {
     harness.close();
+  }
+});
+
+test('sync stays functional when change_log.sequence has not been migrated yet', async () => {
+  const db = new TestD1Database();
+  applyMigrations(db, '0005_notes_table.sql');
+  const env: Env = {
+    DB: db as unknown as D1Database,
+    SESSION_SECRET: 'test-session-secret',
+    TURNSTILE_SECRET: 'test-turnstile-secret',
+    TURNSTILE_ENABLED: 'false',
+    APP_SCHEMA_LATEST: '3',
+    APP_SCHEMA_MIN_SUPPORTED: '3',
+    SESSION_COOKIE_NAME: 'tmtd_session',
+    SESSION_COOKIE_SAME_SITE: 'Lax',
+    ALLOWED_ORIGINS: 'https://do.webme.ca',
+  };
+
+  const requestJson = async <T>(path: string, init?: RequestInit) => {
+    const response = await worker.fetch(new Request(`https://do.webme.ca${path}`, init), env);
+    return {
+      response,
+      data: await response.json() as T,
+    };
+  };
+
+  try {
+    const signUp = await requestJson<{ user: { email: string } }>('/api/auth/sign-up', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.10' },
+      body: JSON.stringify({ email: 'legacy-schema@example.com', password: strongPassword }),
+    });
+    assert.equal(signUp.response.status, 200);
+
+    const cookie = signUp.response.headers.get('set-cookie');
+    assert.ok(cookie);
+    const authHeaders = {
+      cookie: cookie.split(';', 1)[0] || '',
+      'cf-connecting-ip': '203.0.113.10',
+    };
+
+    const bootstrap = await requestJson<{ cursor: string; snapshot: { tasks: unknown[] } }>('/api/sync/bootstrap', {
+      headers: authHeaders,
+    });
+    assert.equal(bootstrap.response.status, 200);
+    assert.equal(bootstrap.data.snapshot.tasks.length, 0);
+    assert.match(bootstrap.data.cursor, /^\d+$/);
+
+    const push = await requestJson<{ accepted: number; cursor: string }>('/api/sync/push', {
+      method: 'POST',
+      headers: {
+        ...authHeaders,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        deviceId: 'legacy-device',
+        cursor: bootstrap.data.cursor,
+        ops: [
+          {
+            id: 'legacy-op-1',
+            entity: 'task',
+            action: 'upsert',
+            recordId: 'legacy-task-1',
+            payload: baseTask({ id: 'legacy-task-1', title: 'Legacy schema task' }),
+            deviceId: 'legacy-device',
+            timestamp: 1_700_000_000_500,
+          },
+        ],
+      }),
+    });
+    assert.equal(push.response.status, 200);
+    assert.equal(push.data.accepted, 1);
+    assert.match(push.data.cursor, /^\d+:[\w-]+$/);
+
+    const pull = await requestJson<{ changes: Array<{ recordId: string }>; cursor: string }>(`/api/sync/pull?cursor=${encodeURIComponent(bootstrap.data.cursor)}`, {
+      headers: authHeaders,
+    });
+    assert.equal(pull.response.status, 200);
+    assert.equal(pull.data.changes.length, 1);
+    assert.equal(pull.data.changes[0]?.recordId, 'legacy-task-1');
+    assert.match(pull.data.cursor, /^\d+:[\w-]+$/);
+  } finally {
+    db.close();
   }
 });
 

@@ -92,13 +92,14 @@ export class TestD1Database {
   }
 }
 
-export const applyMigrations = (db: TestD1Database) => {
+export const applyMigrations = (db: TestD1Database, through?: string) => {
   const migrationsDir = join(process.cwd(), 'worker', 'migrations');
   const files = readdirSync(migrationsDir)
     .filter((file) => file.endsWith('.sql'))
     .sort();
 
   for (const file of files) {
+    if (through && file > through) break;
     db.exec(readFileSync(join(migrationsDir, file), 'utf8'));
   }
 };

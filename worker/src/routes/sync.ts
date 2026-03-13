@@ -30,9 +30,18 @@ interface CompactedPushOp extends SyncOperation {
   sourceIds: string[];
 }
 
+interface ChangeLogCursorInfo {
+  hasSequence: boolean;
+  cursor: string;
+  sequence: number | null;
+  updatedAt: number | null;
+  id: string | null;
+}
+
 const CHANGE_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const getCursor = (sequence: number) => `${sequence}`;
+const getLegacyCursor = (updatedAt: number, opId: string) => `${updatedAt}:${opId}`;
 
 const parseLegacyCursor = (cursor: string) => {
   const [tsRaw, opId] = cursor.split(':');
@@ -184,36 +193,117 @@ const compactIncomingOps = (ops: SyncOperation[], deviceId: string) => {
   return compacted;
 };
 
-const readLatestSequence = async (env: Env, userId: string) => {
-  const latest = await env.DB.prepare('SELECT sequence FROM change_log WHERE user_id = ? ORDER BY sequence DESC LIMIT 1')
-    .bind(userId)
-    .first<{ sequence: number }>();
-  return Number(latest?.sequence || 0);
+const hasSequenceColumn = async (env: Env) => {
+  const columns = await env.DB.prepare("PRAGMA table_info('change_log')").all<{ name: string }>();
+  return (columns.results || []).some((column) => String((column as { name?: string }).name || '') === 'sequence');
 };
 
-const resolveCursorSequence = async (env: Env, userId: string, rawCursor: string | null) => {
-  if (!rawCursor) return 0;
-  if (/^\d+$/.test(rawCursor)) return Number.parseInt(rawCursor, 10) || 0;
+const readLatestCursorInfo = async (env: Env, userId: string): Promise<ChangeLogCursorInfo> => {
+  const hasSequence = await hasSequenceColumn(env);
+
+  if (hasSequence) {
+    const latest = await env.DB.prepare('SELECT sequence FROM change_log WHERE user_id = ? ORDER BY sequence DESC LIMIT 1')
+      .bind(userId)
+      .first<{ sequence: number }>();
+    const sequence = Number(latest?.sequence || 0);
+    return {
+      hasSequence,
+      cursor: getCursor(sequence),
+      sequence,
+      updatedAt: null,
+      id: null,
+    };
+  }
+
+  const latest = await env.DB.prepare('SELECT updated_at as updatedAt, id FROM change_log WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1')
+    .bind(userId)
+    .first<{ updatedAt: number; id: string }>();
+  const updatedAt = latest?.updatedAt ? Number(latest.updatedAt) : 0;
+  const id = latest?.id ? String(latest.id) : '';
+  return {
+    hasSequence,
+    cursor: latest ? getLegacyCursor(updatedAt, id) : getCursor(0),
+    sequence: null,
+    updatedAt: latest ? updatedAt : null,
+    id: latest ? id : null,
+  };
+};
+
+const resolveCursorInfo = async (env: Env, userId: string, rawCursor: string | null): Promise<ChangeLogCursorInfo> => {
+  const hasSequence = await hasSequenceColumn(env);
+  if (!rawCursor) {
+    return {
+      hasSequence,
+      cursor: getCursor(0),
+      sequence: 0,
+      updatedAt: null,
+      id: null,
+    };
+  }
+
+  if (hasSequence && /^\d+$/.test(rawCursor)) {
+    return {
+      hasSequence,
+      cursor: rawCursor,
+      sequence: Number.parseInt(rawCursor, 10) || 0,
+      updatedAt: null,
+      id: null,
+    };
+  }
 
   const legacy = parseLegacyCursor(rawCursor);
-  const exact = await env.DB.prepare(
-    'SELECT sequence FROM change_log WHERE user_id = ? AND updated_at = ? AND id = ? LIMIT 1',
-  )
-    .bind(userId, legacy.ts, legacy.opId)
-    .first<{ sequence: number }>();
+  if (!legacy.ts || !legacy.opId) {
+    return {
+      hasSequence,
+      cursor: getCursor(0),
+      sequence: hasSequence ? 0 : null,
+      updatedAt: null,
+      id: null,
+    };
+  }
 
-  if (exact?.sequence) return Number(exact.sequence);
+  if (hasSequence) {
+    const exact = await env.DB.prepare(
+      'SELECT sequence FROM change_log WHERE user_id = ? AND updated_at = ? AND id = ? LIMIT 1',
+    )
+      .bind(userId, legacy.ts, legacy.opId)
+      .first<{ sequence: number }>();
 
-  const approximate = await env.DB.prepare(
-    `SELECT COALESCE(MAX(sequence), 0) as sequence
-     FROM change_log
-     WHERE user_id = ?
-       AND (updated_at < ? OR (updated_at = ? AND id <= ?))`,
-  )
-    .bind(userId, legacy.ts, legacy.ts, legacy.opId)
-    .first<{ sequence: number }>();
+    if (exact?.sequence) {
+      return {
+        hasSequence,
+        cursor: getCursor(Number(exact.sequence)),
+        sequence: Number(exact.sequence),
+        updatedAt: legacy.ts,
+        id: legacy.opId,
+      };
+    }
 
-  return Number(approximate?.sequence || 0);
+    const approximate = await env.DB.prepare(
+      `SELECT COALESCE(MAX(sequence), 0) as sequence
+       FROM change_log
+       WHERE user_id = ?
+         AND (updated_at < ? OR (updated_at = ? AND id <= ?))`,
+    )
+      .bind(userId, legacy.ts, legacy.ts, legacy.opId)
+      .first<{ sequence: number }>();
+
+    return {
+      hasSequence,
+      cursor: getCursor(Number(approximate?.sequence || 0)),
+      sequence: Number(approximate?.sequence || 0),
+      updatedAt: legacy.ts,
+      id: legacy.opId,
+    };
+  }
+
+  return {
+    hasSequence,
+    cursor: rawCursor,
+    sequence: null,
+    updatedAt: legacy.ts,
+    id: legacy.opId,
+  };
 };
 
 const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp[]) => {
@@ -514,11 +604,11 @@ export const syncRoutes = {
 
     const schema = await getSchemaMeta(env);
     const snapshot = await readSnapshot(env, session.userId);
-    const latestSequence = await readLatestSequence(env, session.userId);
+    const latestCursor = await readLatestCursorInfo(env, session.userId);
 
     return json({
       serverTime: now(),
-      cursor: getCursor(latestSequence),
+      cursor: latestCursor.cursor,
       snapshot,
       settingsVersion: snapshot.settingsVersion,
       schema,
@@ -582,13 +672,13 @@ export const syncRoutes = {
       await env.DB.batch(writeStatements);
     }
 
-    const latestSequence = await readLatestSequence(env, session.userId);
+    const latestCursor = await readLatestCursorInfo(env, session.userId);
 
     return json({
       accepted: acceptedOpIds.length,
       acceptedOpIds,
       conflicts,
-      cursor: getCursor(latestSequence),
+      cursor: latestCursor.cursor,
     });
   },
 
@@ -598,18 +688,31 @@ export const syncRoutes = {
 
     const schema = await getSchemaMeta(env);
     const url = new URL(request.url);
-    const cursorSequence = await resolveCursorSequence(env, session.userId, url.searchParams.get('cursor'));
-
-    const rows = await env.DB.prepare(
-      `SELECT sequence, id, entity, record_id as recordId, action, payload, updated_at as updatedAt, device_id as deviceId, version
-       FROM change_log
-       WHERE user_id = ?
-         AND sequence > ?
-       ORDER BY sequence ASC
-       LIMIT 500`,
-    )
-      .bind(session.userId, cursorSequence)
-      .all();
+    const cursorInfo = await resolveCursorInfo(env, session.userId, url.searchParams.get('cursor'));
+    const rows = cursorInfo.hasSequence
+      ? await env.DB.prepare(
+        `SELECT sequence, id, entity, record_id as recordId, action, payload, updated_at as updatedAt, device_id as deviceId, version
+         FROM change_log
+         WHERE user_id = ?
+           AND sequence > ?
+         ORDER BY sequence ASC
+         LIMIT 500`,
+      )
+        .bind(session.userId, cursorInfo.sequence || 0)
+        .all()
+      : await env.DB.prepare(
+        `SELECT id, entity, record_id as recordId, action, payload, updated_at as updatedAt, device_id as deviceId, version
+         FROM change_log
+         WHERE user_id = ?
+           AND (
+             updated_at > ?
+             OR (updated_at = ? AND id > ?)
+           )
+         ORDER BY updated_at ASC, id ASC
+         LIMIT 500`,
+      )
+        .bind(session.userId, cursorInfo.updatedAt || 0, cursorInfo.updatedAt || 0, cursorInfo.id || '')
+        .all();
 
     const changes = (rows.results || []).map((row: any) => ({
       id: row.id,
@@ -622,10 +725,14 @@ export const syncRoutes = {
       version: typeof row.version === 'number' ? Number(row.version) : null,
     }));
 
-    const lastRow = (rows.results || [])[Math.max(0, (rows.results || []).length - 1)] as { sequence?: number } | undefined;
+    const lastRow = (rows.results || [])[Math.max(0, (rows.results || []).length - 1)] as { sequence?: number; updatedAt?: number; id?: string } | undefined;
 
     return json({
-      cursor: lastRow?.sequence ? getCursor(Number(lastRow.sequence)) : getCursor(cursorSequence),
+      cursor: cursorInfo.hasSequence
+        ? (lastRow?.sequence ? getCursor(Number(lastRow.sequence)) : getCursor(cursorInfo.sequence || 0))
+        : (lastRow?.updatedAt && lastRow?.id
+          ? getLegacyCursor(Number(lastRow.updatedAt), String(lastRow.id))
+          : (cursorInfo.updatedAt && cursorInfo.id ? getLegacyCursor(cursorInfo.updatedAt, cursorInfo.id) : getCursor(0))),
       changes,
       stats: { conflicts: 0 },
       schema,
