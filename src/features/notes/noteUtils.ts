@@ -41,6 +41,27 @@ export const formatNoteTimestamp = (timestamp: number) => new Date(timestamp).to
   minute: '2-digit',
 });
 
+const normalizeTitleLine = (line: string) => line
+  .replace(/^#{1,6}\s+/, '')
+  .replace(/^\s*(?:[-*+]|\d+\.)\s+/, '')
+  .replace(/^>\s?/, '')
+  .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+  .replace(/`([^`]+)`/g, '$1')
+  .replace(/\*\*([^*]+)\*\*/g, '$1')
+  .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1$2')
+  .trim();
+
+export const getNoteTitleFromBody = (body: string, fallback = 'Untitled') => {
+  const firstLine = body
+    .split('\n')
+    .map((line) => normalizeTitleLine(line))
+    .find((line) => line.length > 0);
+
+  if (!firstLine) return fallback;
+  if (firstLine.length <= 72) return firstLine;
+  return `${firstLine.slice(0, 71).trimEnd()}...`;
+};
+
 export const sortNotes = (notes: Note[]) => [...notes].sort((left, right) => (
   Number(right.pinned) - Number(left.pinned)
   || right.updatedAt - left.updatedAt

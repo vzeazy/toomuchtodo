@@ -1,7 +1,7 @@
-import { AppStateData, AppSettings, SyncDiagnostics, SyncMeta, ThemeDefinition, TimerState } from '../../types';
+import { AppStateData, AppSettings, DayGoal, SyncDiagnostics, SyncMeta, ThemeDefinition, TimerState } from '../../types';
 import { builtInThemes } from '../../themes/builtInThemes';
 
-export const APP_SCHEMA_VERSION = 3;
+export const APP_SCHEMA_VERSION = 4;
 
 const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
@@ -9,11 +9,14 @@ const INITIAL_SETTINGS: AppSettings = {
   taskListMode: 'list',
   notesListPreview: 'line1',
   notesViewLayout: 'list',
+  contextualNotesEnabled: true,
+  contextualNotesOrder: {},
   showCompletedTasks: true,
   hideEmptyProjectsInPlanner: false,
   compactEmptyDaysInPlanner: false,
   startPlannerOnToday: false,
   groupDayViewByPart: false,
+  dailyGoalsEnabled: false,
 };
 
 const INITIAL_TIMER_STATE: TimerState = {
@@ -58,6 +61,7 @@ const createDefaultState = (): AppStateData => ({
   tasks: [],
   projects: [],
   notes: [],
+  dayGoals: [],
   settings: INITIAL_SETTINGS,
   themes: builtInThemes,
   timer: INITIAL_TIMER_STATE,
@@ -109,6 +113,36 @@ const migrateV2toV3 = (state: AppStateData): AppStateData => ({
   notes: Array.isArray(state.notes) ? state.notes : [],
 });
 
+const normalizeDayGoal = (goal: Partial<DayGoal>): DayGoal => {
+  const createdAt = typeof goal.createdAt === 'number' ? goal.createdAt : Date.now();
+  return {
+    id: typeof goal.id === 'string' ? goal.id : `goal-${Math.random().toString(36).slice(2, 10)}`,
+    date: typeof goal.date === 'string' ? goal.date : '',
+    title: typeof goal.title === 'string' && goal.title.trim() ? goal.title : 'Untitled goal',
+    linkedTaskId: typeof goal.linkedTaskId === 'string' ? goal.linkedTaskId : null,
+    position: typeof goal.position === 'number' ? goal.position : 0,
+    completedAt: typeof goal.completedAt === 'number' ? goal.completedAt : null,
+    archivedAt: typeof goal.archivedAt === 'number' ? goal.archivedAt : null,
+    createdAt,
+    updatedAt: typeof goal.updatedAt === 'number' ? goal.updatedAt : createdAt,
+    deletedAt: typeof goal.deletedAt === 'number' ? goal.deletedAt : null,
+    syncVersion: typeof goal.syncVersion === 'number' ? goal.syncVersion : null,
+  };
+};
+
+const migrateV3toV4 = (state: AppStateData): AppStateData => ({
+  ...state,
+  version: APP_SCHEMA_VERSION,
+  dayGoals: Array.isArray((state as AppStateData & { dayGoals?: DayGoal[] }).dayGoals)
+    ? (state as AppStateData & { dayGoals?: DayGoal[] }).dayGoals!.map(normalizeDayGoal)
+    : [],
+  settings: {
+    ...INITIAL_SETTINGS,
+    ...(state.settings || {}),
+    dailyGoalsEnabled: state.settings?.dailyGoalsEnabled ?? INITIAL_SETTINGS.dailyGoalsEnabled,
+  },
+});
+
 export const createDefaultSyncDiagnosticsState = createDefaultSyncDiagnostics;
 
 export const runStateMigrations = (input: PersistedEnvelope | AppStateData | null | undefined): PersistedEnvelope => {
@@ -131,6 +165,11 @@ export const runStateMigrations = (input: PersistedEnvelope | AppStateData | nul
   if (currentVersion < 3) {
     state = migrateV2toV3(state);
     currentVersion = 3;
+  }
+
+  if (currentVersion < 4) {
+    state = migrateV3toV4(state);
+    currentVersion = 4;
   }
 
   return {

@@ -96,6 +96,19 @@ const toNoteRow = (record: Record<string, unknown>) => ({
   deletedAt: typeof record.deletedAt === 'number' ? Number(record.deletedAt) : null,
 });
 
+const toDayGoalRow = (record: Record<string, unknown>) => ({
+  id: String(record.id || ''),
+  date: String(record.date || ''),
+  title: String(record.title || 'Untitled goal'),
+  linkedTaskId: record.linkedTaskId ? String(record.linkedTaskId) : null,
+  position: Number(record.position || 0),
+  completedAt: typeof record.completedAt === 'number' ? Number(record.completedAt) : null,
+  archivedAt: typeof record.archivedAt === 'number' ? Number(record.archivedAt) : null,
+  createdAt: Number(record.createdAt || now()),
+  updatedAt: Number(record.updatedAt || now()),
+  deletedAt: typeof record.deletedAt === 'number' ? Number(record.deletedAt) : null,
+});
+
 const registerDevice = async (env: Env, userId: string, deviceId: string) => {
   const ts = now();
   await env.DB.prepare(
@@ -149,6 +162,20 @@ const noteRowToRecord = (row: any) => ({
   syncVersion: Number(row.version),
 });
 
+const dayGoalRowToRecord = (row: any) => ({
+  id: row.id,
+  date: row.date,
+  title: row.title,
+  linkedTaskId: row.linked_task_id,
+  position: Number(row.position),
+  completedAt: row.completed_at ? Number(row.completed_at) : null,
+  archivedAt: row.archived_at ? Number(row.archived_at) : null,
+  createdAt: Number(row.created_at),
+  updatedAt: Number(row.updated_at),
+  deletedAt: row.deleted_at ? Number(row.deleted_at) : null,
+  syncVersion: Number(row.version),
+});
+
 const buildConflict = (op: SyncOperation, stored: StoredRecord): PushConflict => ({
   opId: op.id,
   entity: op.entity,
@@ -196,6 +223,13 @@ const compactIncomingOps = (ops: SyncOperation[], deviceId: string) => {
 const hasSequenceColumn = async (env: Env) => {
   const columns = await env.DB.prepare("PRAGMA table_info('change_log')").all<{ name: string }>();
   return (columns.results || []).some((column) => String((column as { name?: string }).name || '') === 'sequence');
+};
+
+const hasTable = async (env: Env, name: string) => {
+  const row = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .bind(name)
+    .first<{ name: string }>();
+  return Boolean(row?.name);
 };
 
 const readLatestCursorInfo = async (env: Env, userId: string): Promise<ChangeLogCursorInfo> => {
@@ -316,7 +350,7 @@ const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp
     groups.set(op.entity, ids);
   }
 
-  for (const entity of ['task', 'project', 'note', 'settings'] as const) {
+  for (const entity of ['task', 'project', 'note', 'dayGoal', 'settings'] as const) {
     const ids = groups.get(entity);
     if (!ids?.length) continue;
 
@@ -333,6 +367,10 @@ const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp
       statements.push(env.DB.prepare(`SELECT * FROM notes WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
       continue;
     }
+    if (entity === 'dayGoal') {
+      statements.push(env.DB.prepare(`SELECT * FROM day_goals WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
+      continue;
+    }
     statements.push(env.DB.prepare(`SELECT id, payload, version FROM settings WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
   }
 
@@ -342,7 +380,7 @@ const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp
   const currentRecords = new Map<string, StoredRecord>();
   let resultIndex = 0;
 
-  for (const entity of ['task', 'project', 'note', 'settings'] as const) {
+  for (const entity of ['task', 'project', 'note', 'dayGoal', 'settings'] as const) {
     const ids = groups.get(entity);
     if (!ids?.length) continue;
     const rows = batchRows(results[resultIndex]);
@@ -359,6 +397,10 @@ const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp
       }
       if (entity === 'note') {
         currentRecords.set(`${entity}:${row.id}`, { version: Number(row.version), record: noteRowToRecord(row) });
+        continue;
+      }
+      if (entity === 'dayGoal') {
+        currentRecords.set(`${entity}:${row.id}`, { version: Number(row.version), record: dayGoalRowToRecord(row) });
         continue;
       }
       currentRecords.set(`${entity}:${row.id}`, {
@@ -500,6 +542,58 @@ const buildWriteStatements = (
           .bind(note.id || op.recordId, userId, note.title, note.body, note.scopeType, note.scopeRef, note.pinned, note.createdAt, note.updatedAt, note.deletedAt, nextVersion),
       );
     }
+  } else if (op.entity === 'dayGoal') {
+    if (op.action === 'delete') {
+      changePayload = { deletedAt: ts };
+      statements.push(
+        env.DB.prepare('UPDATE day_goals SET deleted_at = ?, updated_at = ?, version = ? WHERE id = ? AND user_id = ?')
+          .bind(ts, ts, nextVersion, op.recordId, userId),
+      );
+    } else {
+      const dayGoal = toDayGoalRow(op.payload || {});
+      changePayload = {
+        id: dayGoal.id || op.recordId,
+        date: dayGoal.date,
+        title: dayGoal.title,
+        linkedTaskId: dayGoal.linkedTaskId,
+        position: dayGoal.position,
+        completedAt: dayGoal.completedAt,
+        archivedAt: dayGoal.archivedAt,
+        createdAt: dayGoal.createdAt,
+        updatedAt: dayGoal.updatedAt,
+        deletedAt: dayGoal.deletedAt,
+      };
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO day_goals (id, user_id, date, title, linked_task_id, position, completed_at, archived_at, created_at, updated_at, deleted_at, version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, id) DO UPDATE SET
+           date=excluded.date,
+           title=excluded.title,
+           linked_task_id=excluded.linked_task_id,
+           position=excluded.position,
+           completed_at=excluded.completed_at,
+           archived_at=excluded.archived_at,
+           updated_at=excluded.updated_at,
+           deleted_at=excluded.deleted_at,
+           version=excluded.version`,
+        )
+          .bind(
+            dayGoal.id || op.recordId,
+            userId,
+            dayGoal.date,
+            dayGoal.title,
+            dayGoal.linkedTaskId,
+            dayGoal.position,
+            dayGoal.completedAt,
+            dayGoal.archivedAt,
+            dayGoal.createdAt,
+            dayGoal.updatedAt,
+            dayGoal.deletedAt,
+            nextVersion,
+          ),
+      );
+    }
   } else if (op.action === 'upsert') {
     changePayload = { ...(op.payload || {}) };
     statements.push(
@@ -527,10 +621,14 @@ const buildWriteStatements = (
 };
 
 const readSnapshot = async (env: Env, userId: string) => {
-  const [tasksRes, projectsRes, notesRes, settingsRow] = await Promise.all([
+  const hasDayGoalsTable = await hasTable(env, 'day_goals');
+  const [tasksRes, projectsRes, notesRes, dayGoalsRes, settingsRow] = await Promise.all([
     env.DB.prepare('SELECT * FROM tasks WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all(),
     env.DB.prepare('SELECT * FROM projects WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all(),
     env.DB.prepare('SELECT * FROM notes WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all(),
+    hasDayGoalsTable
+      ? env.DB.prepare('SELECT * FROM day_goals WHERE user_id = ? AND deleted_at IS NULL').bind(userId).all()
+      : Promise.resolve({ results: [] as any[] }),
     env.DB.prepare('SELECT payload, version FROM settings WHERE user_id = ? AND id = ? AND deleted_at IS NULL').bind(userId, 'settings').first<{ payload: string; version: number }>(),
   ]);
 
@@ -576,9 +674,23 @@ const readSnapshot = async (env: Env, userId: string) => {
     syncVersion: Number(row.version),
   }));
 
+  const dayGoals = (dayGoalsRes.results || []).map((row: any) => ({
+    id: row.id,
+    date: row.date,
+    title: row.title,
+    linkedTaskId: row.linked_task_id,
+    position: Number(row.position),
+    completedAt: row.completed_at ? Number(row.completed_at) : null,
+    archivedAt: row.archived_at ? Number(row.archived_at) : null,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+    deletedAt: row.deleted_at ? Number(row.deleted_at) : null,
+    syncVersion: Number(row.version),
+  }));
+
   const settings = settingsRow ? JSON.parse(settingsRow.payload) : {};
 
-  return { tasks, projects, notes, settings, settingsVersion: settingsRow ? Number(settingsRow.version) : null };
+  return { tasks, projects, notes, dayGoals, settings, settingsVersion: settingsRow ? Number(settingsRow.version) : null };
 };
 
 export const pruneChangeLog = async (env: Env, retentionMs = CHANGE_LOG_RETENTION_MS) => {

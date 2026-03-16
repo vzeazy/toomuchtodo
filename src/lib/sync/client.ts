@@ -4,7 +4,7 @@ import { ApiResponse, requestJson } from './http';
 export interface SyncBootstrapResponse {
   serverTime: number;
   cursor: string;
-  snapshot: Pick<AppStateData, 'tasks' | 'projects' | 'notes' | 'settings'>;
+  snapshot: Pick<AppStateData, 'tasks' | 'projects' | 'notes' | 'dayGoals' | 'settings'>;
   settingsVersion: number | null;
   schema: {
     minSupportedClientSchema: number;

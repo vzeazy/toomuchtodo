@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Copy, Download, LogIn, Palette, RefreshCw, Settings2, ShieldCheck, Upload, UserPlus } from 'lucide-react';
+import { Cloud, Copy, Download, Flag, LogIn, NotebookText, Palette, RefreshCw, Settings2, ShieldCheck, Upload, UserPlus } from 'lucide-react';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { getTaskListGenerationPrompt, isTaskListExchange } from '../../lib/taskListExchange';
 import { getThemePrompt, validateThemeDefinition } from '../../lib/theme';
@@ -28,6 +28,10 @@ export const SettingsView: React.FC<{
   onSignOut: () => Promise<void>;
   onToggleCloudLinked: (enabled: boolean) => void;
   onRunSyncNow: () => Promise<void>;
+  dailyGoalsEnabled: boolean;
+  onToggleDailyGoalsEnabled: () => void;
+  contextualNotesEnabled: boolean;
+  onToggleContextualNotesEnabled: () => void;
 }> = ({
   projects,
   themes,
@@ -49,6 +53,10 @@ export const SettingsView: React.FC<{
   onSignOut,
   onToggleCloudLinked,
   onRunSyncNow,
+  dailyGoalsEnabled,
+  onToggleDailyGoalsEnabled,
+  contextualNotesEnabled,
+  onToggleContextualNotesEnabled,
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -242,6 +250,57 @@ export const SettingsView: React.FC<{
         <h1 className="text-[34px] font-semibold leading-[1.02] tracking-[-0.04em] text-[var(--text-primary)]">Settings</h1>
         <div className="mt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">Data portability, themes, and generation tools</div>
       </div>
+
+      <section className="panel-surface rounded-[28px] p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <Flag size={18} className="text-[var(--accent)]" />
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Features</h2>
+        </div>
+        <div className="rounded-[22px] border soft-divider bg-[var(--panel-alt-bg)] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-xl">
+              <div className="text-[13px] font-semibold text-[var(--text-primary)]">Daily goals in day view</div>
+              <div className="mt-1 text-[12px] leading-6 text-[var(--text-secondary)]">
+                Show the focused goal cards above a single day&apos;s task list. Disabling the feature hides the UI but keeps saved goal data intact.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleDailyGoalsEnabled}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                dailyGoalsEnabled
+                  ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
+                  : 'border border-[var(--border-color)] bg-[var(--panel-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <Flag size={13} />
+              {dailyGoalsEnabled ? 'Enabled' : 'Enable'}
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 rounded-[22px] border soft-divider bg-[var(--panel-alt-bg)] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-xl">
+              <div className="text-[13px] font-semibold text-[var(--text-primary)]">Contextual notes in task panels</div>
+              <div className="mt-1 text-[12px] leading-6 text-[var(--text-secondary)]">
+                Show scoped notes under task lists in project, day, and area contexts. Disabling this keeps note data and the dashboard intact.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleContextualNotesEnabled}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                contextualNotesEnabled
+                  ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
+                  : 'border border-[var(--border-color)] bg-[var(--panel-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <NotebookText size={13} />
+              {contextualNotesEnabled ? 'Enabled' : 'Enable'}
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section className="panel-surface rounded-[28px] p-6">
         <div className="mb-4 flex items-center gap-3">

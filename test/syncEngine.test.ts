@@ -6,7 +6,7 @@ import { builtInThemes } from '../src/themes/builtInThemes';
 import { syncApi } from '../src/lib/sync/client';
 
 const createState = (): AppStateData => ({
-  version: 3,
+  version: 4,
   tasks: [
     {
       id: 'task-1',
@@ -29,6 +29,7 @@ const createState = (): AppStateData => ({
   ],
   projects: [],
   notes: [],
+  dayGoals: [],
   settings: {
     activeThemeId: builtInThemes[0].id,
     plannerWidthMode: 'container',
@@ -40,6 +41,7 @@ const createState = (): AppStateData => ({
     compactEmptyDaysInPlanner: false,
     startPlannerOnToday: false,
     groupDayViewByPart: false,
+    dailyGoalsEnabled: false,
   },
   themes: builtInThemes,
   timer: {
@@ -124,7 +126,7 @@ test('runSyncOnce clears accepted ops even when the follow-up pull fails', async
       timestamp: 3,
       baseVersion: 7,
     }],
-    localSchemaVersion: 3,
+    localSchemaVersion: 4,
     schemaBlocked: false,
     settingsVersion: null,
     lastConflicts: [],

@@ -488,7 +488,7 @@ export const TaskListView: React.FC<{
             <div className="min-w-0">
               <h1 className="text-[22px] font-medium leading-[1.05] tracking-[-0.03em] text-[var(--text-primary)] sm:text-[26px]">{headerTitle}</h1>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium text-[var(--text-muted)]">
-                {(taskListMode === 'list' ? visibleListTasks.length : itemCount)} items
+                {currentView !== 'day' && currentView !== 'today' && <span>{(taskListMode === 'list' ? visibleListTasks.length : itemCount)} items</span>}
                 {selectedArea && <span>Area: {selectedArea}</span>}
                 {selectedProjectId && <span>Project scoped</span>}
               </div>

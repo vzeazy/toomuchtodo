@@ -8,6 +8,7 @@ import {
   AppDataExport,
   AppSettings,
   AppStateData,
+  DayGoal,
   Note,
   NoteListPreview,
   NoteViewLayout,
@@ -36,6 +37,7 @@ const LEGACY_BOOTSTRAP_PROJECT_COLORS = new Map<string, string>();
 
 const INITIAL_TASKS: Task[] = [];
 const INITIAL_NOTES: Note[] = [];
+const INITIAL_DAY_GOALS: DayGoal[] = [];
 
 const INITIAL_SETTINGS: AppSettings = {
   activeThemeId: builtInThemes[0].id,
@@ -43,11 +45,14 @@ const INITIAL_SETTINGS: AppSettings = {
   taskListMode: 'list',
   notesListPreview: 'line1',
   notesViewLayout: 'list',
+  contextualNotesEnabled: true,
+  contextualNotesOrder: {},
   showCompletedTasks: true,
   hideEmptyProjectsInPlanner: false,
   compactEmptyDaysInPlanner: false,
   startPlannerOnToday: false,
   groupDayViewByPart: false,
+  dailyGoalsEnabled: false,
 };
 
 const INITIAL_TIMER_STATE: TimerState = {
@@ -120,6 +125,23 @@ const normalizeNote = (note: Partial<Note>): Note => {
   };
 };
 
+const normalizeDayGoal = (goal: Partial<DayGoal>): DayGoal => {
+  const createdAt = typeof goal.createdAt === 'number' ? goal.createdAt : Date.now();
+  return {
+    id: typeof goal.id === 'string' ? goal.id : uid('goal'),
+    date: typeof goal.date === 'string' ? goal.date : '',
+    title: typeof goal.title === 'string' ? goal.title : '',
+    linkedTaskId: typeof goal.linkedTaskId === 'string' ? goal.linkedTaskId : null,
+    position: typeof goal.position === 'number' ? goal.position : 0,
+    completedAt: typeof goal.completedAt === 'number' ? goal.completedAt : null,
+    archivedAt: typeof goal.archivedAt === 'number' ? goal.archivedAt : null,
+    createdAt,
+    updatedAt: typeof goal.updatedAt === 'number' ? goal.updatedAt : createdAt,
+    deletedAt: typeof goal.deletedAt === 'number' ? goal.deletedAt : null,
+    syncVersion: typeof goal.syncVersion === 'number' ? goal.syncVersion : null,
+  };
+};
+
 const dedupeThemes = (themes: ThemeDefinition[]) => {
   const seen = new Map<string, ThemeDefinition>();
   for (const theme of themes) seen.set(theme.id, theme);
@@ -143,17 +165,26 @@ const normalizeState = (parsed: Partial<AppStateData>): AppStateData => ({
   tasks: Array.isArray(parsed.tasks) ? parsed.tasks.map(normalizeTask) : INITIAL_TASKS,
   projects: Array.isArray(parsed.projects) ? parsed.projects.map(normalizeProject) : INITIAL_PROJECTS,
   notes: Array.isArray(parsed.notes) ? parsed.notes.map(normalizeNote) : INITIAL_NOTES,
+  dayGoals: Array.isArray(parsed.dayGoals) ? parsed.dayGoals.map(normalizeDayGoal) : INITIAL_DAY_GOALS,
   settings: {
     activeThemeId: parsed.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
     plannerWidthMode: (parsed.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
     taskListMode: (parsed.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
     notesListPreview: (parsed.settings?.notesListPreview as NoteListPreview) || INITIAL_SETTINGS.notesListPreview,
     notesViewLayout: (parsed.settings?.notesViewLayout as NoteViewLayout) || INITIAL_SETTINGS.notesViewLayout,
+    contextualNotesEnabled: parsed.settings?.contextualNotesEnabled ?? INITIAL_SETTINGS.contextualNotesEnabled,
+    contextualNotesOrder: typeof parsed.settings?.contextualNotesOrder === 'object' && parsed.settings?.contextualNotesOrder !== null
+      ? Object.fromEntries(
+        Object.entries(parsed.settings.contextualNotesOrder as Record<string, unknown>)
+          .map(([scopeKey, value]) => [scopeKey, Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []]),
+      )
+      : INITIAL_SETTINGS.contextualNotesOrder,
     showCompletedTasks: parsed.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
     hideEmptyProjectsInPlanner: parsed.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
     compactEmptyDaysInPlanner: parsed.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
     startPlannerOnToday: parsed.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
     groupDayViewByPart: parsed.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
+    dailyGoalsEnabled: parsed.settings?.dailyGoalsEnabled ?? INITIAL_SETTINGS.dailyGoalsEnabled,
   },
   themes: dedupeThemes([...(Array.isArray(parsed.themes) ? parsed.themes : []), ...builtInThemes]),
   timer: parsed.timer || INITIAL_TIMER_STATE,
@@ -219,6 +250,7 @@ function setSharedState(
 const touchTask = (task: Task): Task => ({ ...task, updatedAt: Date.now() });
 const touchProject = (project: Project): Project => ({ ...project, updatedAt: Date.now() });
 const touchNote = (note: Note): Note => ({ ...note, updatedAt: Date.now() });
+const touchDayGoal = (goal: DayGoal): DayGoal => ({ ...goal, updatedAt: Date.now() });
 
 const updateSyncStatus = (value: string) => {
   syncStatus = value;
@@ -230,7 +262,7 @@ const hasCustomLocalSettings = (state: AppStateData) => (
 );
 
 const hasLocalSyncSeedData = (state: AppStateData) => (
-  state.tasks.length > 0 || state.projects.length > 0 || state.notes.length > 0 || hasCustomLocalSettings(state)
+  state.tasks.length > 0 || state.projects.length > 0 || state.notes.length > 0 || state.dayGoals.length > 0 || hasCustomLocalSettings(state)
 );
 
 const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
@@ -265,6 +297,16 @@ const buildInitialLinkOps = (state: AppStateData, meta: SyncMeta) => {
       deviceId: meta.deviceId,
       timestamp: ts,
       baseVersion: typeof note.syncVersion === 'number' ? note.syncVersion : null,
+    })),
+    ...state.dayGoals.map((goal) => ({
+      id: uid('op'),
+      entity: 'dayGoal' as const,
+      action: 'upsert' as const,
+      recordId: goal.id,
+      payload: goal as unknown as Record<string, unknown>,
+      deviceId: meta.deviceId,
+      timestamp: ts,
+      baseVersion: typeof goal.syncVersion === 'number' ? goal.syncVersion : null,
     })),
     ...(hasCustomLocalSettings(state) ? [{
       id: uid('op'),
@@ -653,6 +695,100 @@ export const useAppStore = () => {
     }));
   }, []);
 
+  const addDayGoal = useCallback((input: { date: string; title?: string; linkedTaskId?: string | null }) => {
+    const goalsForDay = getSharedState().dayGoals
+      .filter((goal) => goal.deletedAt === null && goal.archivedAt === null && goal.date === input.date)
+      .sort((left, right) => left.position - right.position);
+    const nextPosition = goalsForDay.length ? goalsForDay[goalsForDay.length - 1].position + 1 : 0;
+    const now = Date.now();
+    const dayGoal = normalizeDayGoal({
+      id: uid('goal'),
+      date: input.date,
+      title: input.title,
+      linkedTaskId: input.linkedTaskId ?? null,
+      position: nextPosition,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      archivedAt: null,
+      completedAt: null,
+      syncVersion: null,
+    });
+
+    setSharedState((prev) => ({
+      ...prev,
+      dayGoals: [...prev.dayGoals, dayGoal],
+    }));
+
+    return dayGoal;
+  }, []);
+
+  const updateDayGoal = useCallback((id: string, updates: Partial<DayGoal>) => {
+    setSharedState((prev) => ({
+      ...prev,
+      dayGoals: prev.dayGoals.map((goal) => (
+        goal.id === id
+          ? touchDayGoal(normalizeDayGoal({ ...goal, ...updates, id: goal.id }))
+          : goal
+      )),
+    }));
+  }, []);
+
+  const deleteDayGoal = useCallback((id: string) => {
+    setSharedState((prev) => ({
+      ...prev,
+      dayGoals: prev.dayGoals.filter((goal) => goal.id !== id),
+    }));
+  }, []);
+
+  const toggleDayGoalComplete = useCallback((id: string) => {
+    setSharedState((prev) => ({
+      ...prev,
+      dayGoals: prev.dayGoals.map((goal) => {
+        if (goal.id !== id) return goal;
+        return touchDayGoal({
+          ...goal,
+          completedAt: goal.completedAt === null ? Date.now() : null,
+        });
+      }),
+    }));
+  }, []);
+
+  const archiveDayGoal = useCallback((id: string) => {
+    setSharedState((prev) => ({
+      ...prev,
+      dayGoals: prev.dayGoals.map((goal) => (
+        goal.id === id
+          ? touchDayGoal({ ...goal, archivedAt: goal.archivedAt === null ? Date.now() : null })
+          : goal
+      )),
+    }));
+  }, []);
+
+  const reorderDayGoals = useCallback((date: string, sourceId: string, targetId: string) => {
+    setSharedState((prev) => {
+      const goalsForDay = prev.dayGoals
+        .filter((goal) => goal.deletedAt === null && goal.date === date)
+        .sort((left, right) => left.position - right.position);
+      const sourceIndex = goalsForDay.findIndex((goal) => goal.id === sourceId);
+      const targetIndex = goalsForDay.findIndex((goal) => goal.id === targetId);
+      if (sourceIndex === -1 || targetIndex === -1) return prev;
+
+      const reordered = [...goalsForDay];
+      const [removed] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, removed);
+      const updatedById = new Map(reordered.map((goal, index) => [
+        goal.id,
+        touchDayGoal({ ...goal, position: index }),
+      ]));
+
+      return {
+        ...prev,
+        dayGoals: prev.dayGoals.map((goal) => updatedById.get(goal.id) || goal),
+      };
+    });
+  }, []);
+
   const setActiveTheme = useCallback((themeId: string) => {
     setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, activeThemeId: themeId } }));
   }, []);
@@ -672,17 +808,26 @@ export const useAppStore = () => {
       tasks: Array.isArray(imported.tasks) ? imported.tasks.map(normalizeTask) : [],
       projects: Array.isArray(imported.projects) ? imported.projects.map(normalizeProject) : [],
       notes: Array.isArray(imported.notes) ? imported.notes.map(normalizeNote) : [],
+      dayGoals: Array.isArray(imported.dayGoals) ? imported.dayGoals.map(normalizeDayGoal) : [],
       settings: {
         activeThemeId: imported.settings?.activeThemeId || INITIAL_SETTINGS.activeThemeId,
         plannerWidthMode: (imported.settings?.plannerWidthMode as PlannerWidthMode) || INITIAL_SETTINGS.plannerWidthMode,
         taskListMode: (imported.settings?.taskListMode as TaskListMode) || INITIAL_SETTINGS.taskListMode,
         notesListPreview: (imported.settings?.notesListPreview as NoteListPreview) || INITIAL_SETTINGS.notesListPreview,
         notesViewLayout: (imported.settings?.notesViewLayout as NoteViewLayout) || INITIAL_SETTINGS.notesViewLayout,
+        contextualNotesEnabled: imported.settings?.contextualNotesEnabled ?? INITIAL_SETTINGS.contextualNotesEnabled,
+        contextualNotesOrder: typeof imported.settings?.contextualNotesOrder === 'object' && imported.settings?.contextualNotesOrder !== null
+          ? Object.fromEntries(
+            Object.entries(imported.settings.contextualNotesOrder as Record<string, unknown>)
+              .map(([scopeKey, value]) => [scopeKey, Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []]),
+          )
+          : INITIAL_SETTINGS.contextualNotesOrder,
         showCompletedTasks: imported.settings?.showCompletedTasks ?? INITIAL_SETTINGS.showCompletedTasks,
         hideEmptyProjectsInPlanner: imported.settings?.hideEmptyProjectsInPlanner ?? INITIAL_SETTINGS.hideEmptyProjectsInPlanner,
         compactEmptyDaysInPlanner: imported.settings?.compactEmptyDaysInPlanner ?? INITIAL_SETTINGS.compactEmptyDaysInPlanner,
         startPlannerOnToday: imported.settings?.startPlannerOnToday ?? INITIAL_SETTINGS.startPlannerOnToday,
         groupDayViewByPart: imported.settings?.groupDayViewByPart ?? INITIAL_SETTINGS.groupDayViewByPart,
+        dailyGoalsEnabled: imported.settings?.dailyGoalsEnabled ?? INITIAL_SETTINGS.dailyGoalsEnabled,
       },
       themes: dedupeThemes([...(Array.isArray(imported.themes) ? imported.themes : []), ...builtInThemes]),
       timer: imported.timer || INITIAL_TIMER_STATE,
@@ -781,6 +926,19 @@ export const useAppStore = () => {
     setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, notesViewLayout } }));
   }, []);
 
+  const setContextualNotesOrder = useCallback((scopeKey: string, noteIds: string[]) => {
+    const normalizedIds = Array.from(new Set(noteIds.filter((id): id is string => typeof id === 'string' && id.length > 0)));
+    setSharedState((prev) => {
+      const nextOrder = { ...prev.settings.contextualNotesOrder };
+      if (normalizedIds.length === 0) {
+        delete nextOrder[scopeKey];
+      } else {
+        nextOrder[scopeKey] = normalizedIds;
+      }
+      return { ...prev, settings: { ...prev.settings, contextualNotesOrder: nextOrder } };
+    });
+  }, []);
+
   const setShowCompletedTasks = useCallback((showCompletedTasks: boolean) => {
     setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, showCompletedTasks } }));
   }, []);
@@ -799,6 +957,14 @@ export const useAppStore = () => {
 
   const toggleGroupDayViewByPart = useCallback(() => {
     setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, groupDayViewByPart: !prev.settings.groupDayViewByPart } }));
+  }, []);
+
+  const toggleDailyGoalsEnabled = useCallback(() => {
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, dailyGoalsEnabled: !prev.settings.dailyGoalsEnabled } }));
+  }, []);
+
+  const toggleContextualNotesEnabled = useCallback(() => {
+    setSharedState((prev) => ({ ...prev, settings: { ...prev.settings, contextualNotesEnabled: !prev.settings.contextualNotesEnabled } }));
   }, []);
 
   const setTaskParent = useCallback((taskId: string, parentId: string | null) => {
@@ -926,6 +1092,16 @@ export const useAppStore = () => {
       .sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.updatedAt - left.updatedAt);
   }, [state.notes]);
 
+  const getDayGoals = useCallback((date: string) => (
+    [...state.dayGoals]
+      .filter((goal) => goal.deletedAt === null && goal.date === date)
+      .sort((left, right) => left.position - right.position || left.createdAt - right.createdAt)
+  ), [state.dayGoals]);
+
+  const getActiveDayGoals = useCallback((date: string) => (
+    getDayGoals(date).filter((goal) => goal.archivedAt === null)
+  ), [getDayGoals]);
+
   return {
     ...state,
     activeTheme,
@@ -951,14 +1127,23 @@ export const useAppStore = () => {
     updateNote,
     deleteNote,
     toggleNotePinned,
+    addDayGoal,
+    updateDayGoal,
+    deleteDayGoal,
+    toggleDayGoalComplete,
+    archiveDayGoal,
+    reorderDayGoals,
     getNotesByScope,
     getRecentNotes,
     searchNotes,
+    getDayGoals,
+    getActiveDayGoals,
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,
     setNotesListPreview,
     setNotesViewLayout,
+    setContextualNotesOrder,
     setShowCompletedTasks,
     setTaskParent,
     moveTaskBefore,
@@ -973,6 +1158,8 @@ export const useAppStore = () => {
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
+    toggleDailyGoalsEnabled,
+    toggleContextualNotesEnabled,
     startTimer,
     pauseTimer,
     resumeTimer,

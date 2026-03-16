@@ -1,5 +1,5 @@
 import { AppStateData, SyncMeta, SyncOperation } from '../../types';
-import { areNotesEqual, areProjectsEqual, areSettingsEqual, areTasksEqual } from './equality';
+import { areDayGoalsEqual, areNotesEqual, areProjectsEqual, areSettingsEqual, areTasksEqual } from './equality';
 
 const uid = () => `op-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -117,6 +117,39 @@ export const buildSyncOperations = (prev: AppStateData, next: AppStateData, meta
         deviceId: meta.deviceId,
         timestamp,
         baseVersion: typeof prevNote?.syncVersion === 'number' ? prevNote.syncVersion : null,
+      });
+    }
+  }
+
+  const prevDayGoals = new Map(prev.dayGoals.map((goal) => [goal.id, goal]));
+  const nextDayGoals = new Map(next.dayGoals.map((goal) => [goal.id, goal]));
+  for (const [id, nextDayGoal] of nextDayGoals) {
+    const prevDayGoal = prevDayGoals.get(id);
+    if (!prevDayGoal || !areDayGoalsEqual(prevDayGoal, nextDayGoal)) {
+      ops.push({
+        id: uid(),
+        entity: 'dayGoal',
+        action: 'upsert',
+        recordId: id,
+        payload: withPayload(nextDayGoal),
+        deviceId: meta.deviceId,
+        timestamp,
+        baseVersion: typeof prevDayGoal?.syncVersion === 'number' ? prevDayGoal.syncVersion : null,
+      });
+    }
+  }
+  for (const id of prevDayGoals.keys()) {
+    const prevDayGoal = prevDayGoals.get(id);
+    if (!nextDayGoals.has(id)) {
+      ops.push({
+        id: uid(),
+        entity: 'dayGoal',
+        action: 'delete',
+        recordId: id,
+        payload: { deletedAt: timestamp },
+        deviceId: meta.deviceId,
+        timestamp,
+        baseVersion: typeof prevDayGoal?.syncVersion === 'number' ? prevDayGoal.syncVersion : null,
       });
     }
   }

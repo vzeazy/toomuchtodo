@@ -349,8 +349,8 @@ test('same-record concurrent edits return a structured version conflict with the
       },
     });
 
-    const currentA = await deviceA.requestJson<{ snapshot: { tasks: Array<{ syncVersion: number }> } }>('/api/sync/bootstrap');
-    const currentB = await deviceB.requestJson<{ snapshot: { tasks: Array<{ syncVersion: number }> } }>('/api/sync/bootstrap');
+    const currentA = await deviceA.requestJson<{ cursor: string; snapshot: { tasks: Array<{ syncVersion: number }> } }>('/api/sync/bootstrap');
+    const currentB = await deviceB.requestJson<{ cursor: string; snapshot: { tasks: Array<{ syncVersion: number }> } }>('/api/sync/bootstrap');
     const baseVersion = currentA.data.snapshot.tasks[0]?.syncVersion;
     assert.equal(baseVersion, currentB.data.snapshot.tasks[0]?.syncVersion);
 
@@ -521,19 +521,23 @@ test('replaying the same push op id is idempotent and does not duplicate change 
 
 test('first-link merge keeps local tasks while hydrating remote tasks and projects', () => {
   const localState = {
-    version: 3,
+    version: 4,
     tasks: [baseTask({ id: 'local-task', title: 'Local task', syncVersion: null })],
     projects: [],
     notes: [baseNote({ id: 'local-note', title: 'Local note', syncVersion: null })],
+    dayGoals: [],
     settings: {
       activeThemeId: 'local-theme',
       plannerWidthMode: 'container',
       taskListMode: 'outline',
+      notesListPreview: 'line1',
+      notesViewLayout: 'list',
       showCompletedTasks: true,
       hideEmptyProjectsInPlanner: false,
       compactEmptyDaysInPlanner: false,
       startPlannerOnToday: false,
       groupDayViewByPart: false,
+      dailyGoalsEnabled: false,
     },
     themes: [],
     timer: {
@@ -553,6 +557,7 @@ test('first-link merge keeps local tasks while hydrating remote tasks and projec
     tasks: [baseTask({ id: 'remote-task', title: 'Remote task', syncVersion: 2 })],
     projects: [{ id: 'remote-project', name: 'Remote project', parentId: null, updatedAt: 1_700_000_003_000, deletedAt: null, syncVersion: 1 }],
     notes: [baseNote({ id: 'remote-note', title: 'Remote note', syncVersion: 1 })],
+    dayGoals: [],
     settings: { ...localState.settings, activeThemeId: 'remote-theme', taskListMode: 'list' },
   });
 

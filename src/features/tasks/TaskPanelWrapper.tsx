@@ -1,14 +1,16 @@
 import React, { useMemo } from 'react';
-import { FileText, PictureInPicture2, StickyNote } from 'lucide-react';
-import { Project, Task, TaskListMode, AppView, Note, NoteScopeType } from '../../types';
+import { PictureInPicture2 } from 'lucide-react';
+import { DayGoal, Project, Task, TaskListMode, AppView, Note, NoteScopeType, AppSettings } from '../../types';
 import { TaskListView } from './TaskListView';
+import { DailyGoalsSection } from '../daily-goals/DailyGoalsSection';
+import { ScopedNotesModule } from '../notes/ScopedNotesModule';
 import {
   TaskPanelPictureInPictureBridge,
   TaskPanelPictureInPictureBridgeHandle,
 } from './TaskPanelPictureInPictureBridge';
 import { getProjectSubtreeIds } from '../../lib/projectTree';
 import { collectTaskIdsWithAncestors, getTaskDescendantIds } from './taskTree';
-import { matchesScope } from '../notes/noteUtils';
+import { getActiveGoalsForDate } from '../daily-goals/dayGoalsSelectors';
 
 export interface PanelState {
   id: string;
@@ -22,7 +24,8 @@ export const TaskPanelWrapper: React.FC<{
   tasks: Task[];
   projects: Project[];
   notes: Note[];
-  settings: { taskListMode: TaskListMode;[key: string]: any };
+  dayGoals: DayGoal[];
+  settings: AppSettings;
   themeVariables: Record<string, string>;
   selectedArea: string | null;
   expandedTaskId: string | null;
@@ -37,8 +40,19 @@ export const TaskPanelWrapper: React.FC<{
   moveTaskAfter: (sourceId: string, targetId: string, parentId: string | null) => void;
   toggleTaskCollapsed: (id: string) => void;
   deleteTask: (id: string) => void;
+  addDayGoal: (input: { date: string; title?: string; linkedTaskId?: string | null }) => DayGoal;
+  updateDayGoal: (id: string, updates: Partial<DayGoal>) => void;
+  deleteDayGoal: (id: string) => void;
+  toggleDayGoalComplete: (id: string) => void;
+  archiveDayGoal: (id: string) => void;
+  reorderDayGoals: (date: string, sourceId: string, targetId: string) => void;
+  addNote: (input: { scopeType: NoteScopeType; scopeRef: string | null; title?: string; body?: string; pinned?: boolean }) => Note;
+  updateNote: (id: string, updates: Partial<Note>) => void;
+  deleteNote: (id: string) => void;
+  toggleNotePinned: (id: string) => void;
+  setContextualNotesOrder: (scopeKey: string, noteIds: string[]) => void;
   setTaskToEditInModal: (task: Task | null) => void;
-  onOpenNotes: (scopeType: NoteScopeType | 'all', scopeRef: string | null) => void;
+  onOpenNotes: (scopeType: NoteScopeType | 'all', scopeRef: string | null, noteId?: string | null) => void;
   onOpenDate?: (dateStr: string) => void;
   onBack?: () => void;
   onClose?: () => void;
@@ -48,6 +62,7 @@ export const TaskPanelWrapper: React.FC<{
   tasks,
   projects,
   notes,
+  dayGoals,
   settings,
   themeVariables,
   selectedArea,
@@ -63,6 +78,17 @@ export const TaskPanelWrapper: React.FC<{
   moveTaskAfter,
   toggleTaskCollapsed,
   deleteTask,
+  addDayGoal,
+  updateDayGoal,
+  deleteDayGoal,
+  toggleDayGoalComplete,
+  archiveDayGoal,
+  reorderDayGoals,
+  addNote,
+  updateNote,
+  deleteNote,
+  toggleNotePinned,
+  setContextualNotesOrder,
   setTaskToEditInModal,
   onOpenNotes,
   onOpenDate,
@@ -118,26 +144,11 @@ export const TaskPanelWrapper: React.FC<{
         subtitle: date.toLocaleDateString('en-US', { year: 'numeric' }),
       };
     }, [panel.dateStr]);
-
-    const visibleNotes = useMemo(() => notes.filter((note) => note.deletedAt === null), [notes]);
-    const scopedNoteCount = useMemo(() => {
-      if (panel.projectId) return visibleNotes.filter((note) => matchesScope(note, 'project', panel.projectId)).length;
-      if ((panel.view === 'day' || panel.view === 'today') && (panel.dateStr || todayDateStr)) {
-        const ref = panel.view === 'today' ? todayDateStr : panel.dateStr!;
-        return visibleNotes.filter((note) => matchesScope(note, 'day', ref)).length;
-      }
-      if (selectedArea) return visibleNotes.filter((note) => matchesScope(note, 'area', selectedArea)).length;
-      return null;
-    }, [panel.projectId, panel.view, panel.dateStr, selectedArea, todayDateStr, visibleNotes]);
-
-    const scopedNotesLink = useMemo(() => {
-      if (panel.projectId) return { scopeType: 'project' as const, scopeRef: panel.projectId };
-      if ((panel.view === 'day' || panel.view === 'today') && (panel.dateStr || todayDateStr)) {
-        return { scopeType: 'day' as const, scopeRef: panel.view === 'today' ? todayDateStr : panel.dateStr! };
-      }
-      if (selectedArea) return { scopeType: 'area' as const, scopeRef: selectedArea };
-      return null;
-    }, [panel.projectId, panel.view, panel.dateStr, selectedArea, todayDateStr]);
+    const activeDayDateStr = panel.view === 'today' ? todayDateStr : panel.dateStr;
+    const activeDayGoals = useMemo(
+      () => (activeDayDateStr ? getActiveGoalsForDate(dayGoals, activeDayDateStr) : []),
+      [activeDayDateStr, dayGoals],
+    );
 
     const headerTitle = useMemo(() => {
       if (panel.projectId) return projects.find((project) => project.id === panel.projectId)?.name || 'Project';
@@ -157,39 +168,20 @@ export const TaskPanelWrapper: React.FC<{
       }
     }, [panel.view, projects, selectedArea, selectedPlannerDay, panel.projectId]);
 
-    const projectNotes = useMemo(() => {
-      if (!panel.projectId) return [];
-      return visibleNotes.filter((note) => matchesScope(note, 'project', panel.projectId)).slice(0, 6);
-    }, [panel.projectId, visibleNotes]);
-
     const child = (
       <div>
-        {panel.projectId && projectNotes.length > 0 && (
-          <div className="mx-auto max-w-5xl mb-1 px-[2px]">
-            <div className="flex flex-wrap items-center gap-1.5 pb-5">
-              <StickyNote size={11} className="text-[var(--text-muted)] shrink-0" />
-              {projectNotes.map((note) => (
-                <button
-                  key={note.id}
-                  type="button"
-                  onClick={() => onOpenNotes('project', panel.projectId)}
-                  className="inline-flex items-center gap-1 rounded-full border soft-divider panel-muted px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] hover:border-[var(--accent-soft)] max-w-[160px]"
-                  title={note.body ? note.body.slice(0, 80) : note.title}
-                >
-                  <span className="truncate">{note.title || 'Untitled'}</span>
-                </button>
-              ))}
-              {(scopedNoteCount ?? 0) > projectNotes.length && (
-                <button
-                  type="button"
-                  onClick={() => onOpenNotes('project', panel.projectId)}
-                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                  +{(scopedNoteCount ?? 0) - projectNotes.length} more
-                </button>
-              )}
-            </div>
-          </div>
+        {isDayLikeView && activeDayDateStr && (
+          <DailyGoalsSection
+            enabled={Boolean(settings.dailyGoalsEnabled)}
+            dateStr={activeDayDateStr}
+            goals={activeDayGoals}
+            onAddGoal={addDayGoal}
+            onUpdateGoal={updateDayGoal}
+            onToggleGoalComplete={toggleDayGoalComplete}
+            onArchiveGoal={archiveDayGoal}
+            onDeleteGoal={deleteDayGoal}
+            onReorderGoals={reorderDayGoals}
+          />
         )}
         <TaskListView
           tasks={taskListTasks}
@@ -220,6 +212,20 @@ export const TaskPanelWrapper: React.FC<{
           onOpenTask={setTaskToEditInModal as any}
           onOpenDate={onOpenDate}
           onBack={onBack}
+        />
+        <ScopedNotesModule
+          enabled={Boolean(settings.contextualNotesEnabled)}
+          panel={panel}
+          selectedArea={selectedArea}
+          notes={notes}
+          todayDateStr={todayDateStr}
+          onAddNote={addNote}
+          onUpdateNote={updateNote}
+          onDeleteNote={deleteNote}
+          onTogglePinned={toggleNotePinned}
+          notesOrderByScope={settings.contextualNotesOrder}
+          onSetNotesOrder={setContextualNotesOrder}
+          onOpenNotesDashboard={(scopeType, scopeRef, noteId) => onOpenNotes(scopeType, scopeRef, noteId)}
         />
       </div>
     );
@@ -252,20 +258,6 @@ export const TaskPanelWrapper: React.FC<{
       </div>
     );
 
-    const notesLinkButton = scopedNotesLink && (
-      <button
-        type="button"
-        onClick={() => onOpenNotes(scopedNotesLink.scopeType, scopedNotesLink.scopeRef)}
-        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border soft-divider panel-muted px-3 transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-        title="Open notes for this context"
-      >
-        <FileText className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em]">
-          Notes{scopedNoteCount !== null && scopedNoteCount > 0 ? ` (${scopedNoteCount})` : ''}
-        </span>
-      </button>
-    );
-
     const popOutAction = (
       <button
         type="button"
@@ -283,8 +275,7 @@ export const TaskPanelWrapper: React.FC<{
     );
 
     const panelActions = (
-      <div className="absolute top-0 right-0 z-20 flex items-center gap-2">
-        {notesLinkButton}
+      <div className="mb-4 flex items-center justify-end gap-2 md:absolute md:top-0 md:right-0 md:z-20 md:mb-0">
         {popOutAction}
         {onClose && (
           <button

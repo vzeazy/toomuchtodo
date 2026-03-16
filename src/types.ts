@@ -9,6 +9,20 @@ export type NoteViewLayout = 'list' | 'card';
 export type DayPart = 'morning' | 'afternoon' | 'evening';
 export type NoteScopeType = 'dashboard' | 'project' | 'area' | 'day';
 
+export interface DayGoal {
+  id: string;
+  date: string;
+  title: string;
+  linkedTaskId: string | null;
+  position: number;
+  completedAt: number | null;
+  archivedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+  syncVersion?: number | null;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -87,11 +101,14 @@ export interface AppSettings {
   taskListMode: TaskListMode;
   notesListPreview: NoteListPreview;
   notesViewLayout: NoteViewLayout;
+  contextualNotesEnabled: boolean;
+  contextualNotesOrder: Record<string, string[]>;
   showCompletedTasks: boolean;
   hideEmptyProjectsInPlanner: boolean;
   compactEmptyDaysInPlanner: boolean;
   startPlannerOnToday: boolean;
   groupDayViewByPart: boolean;
+  dailyGoalsEnabled: boolean;
 }
 
 export interface TimerState {
@@ -111,6 +128,7 @@ export interface AppStateData {
   tasks: Task[];
   projects: Project[];
   notes: Note[];
+  dayGoals: DayGoal[];
   settings: AppSettings;
   themes: ThemeDefinition[];
   timer: TimerState;
@@ -118,7 +136,7 @@ export interface AppStateData {
 
 export interface SyncOperation {
   id: string;
-  entity: 'task' | 'project' | 'note' | 'settings';
+  entity: 'task' | 'project' | 'note' | 'dayGoal' | 'settings';
   action: 'upsert' | 'delete';
   recordId: string;
   payload: Record<string, unknown>;

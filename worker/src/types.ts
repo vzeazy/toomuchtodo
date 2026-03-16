@@ -20,7 +20,7 @@ export interface UserSession {
 
 export interface SyncOperation {
   id: string;
-  entity: 'task' | 'project' | 'note' | 'settings';
+  entity: 'task' | 'project' | 'note' | 'dayGoal' | 'settings';
   action: 'upsert' | 'delete';
   recordId: string;
   payload: Record<string, unknown>;

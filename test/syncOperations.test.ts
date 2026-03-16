@@ -5,10 +5,11 @@ import { AppStateData, SyncMeta } from '../src/types';
 import { builtInThemes } from '../src/themes/builtInThemes';
 
 const createState = (): AppStateData => ({
-  version: 3,
+  version: 4,
   tasks: [],
   projects: [],
   notes: [],
+  dayGoals: [],
   settings: {
     activeThemeId: builtInThemes[0].id,
     plannerWidthMode: 'container',
@@ -20,6 +21,7 @@ const createState = (): AppStateData => ({
     compactEmptyDaysInPlanner: false,
     startPlannerOnToday: false,
     groupDayViewByPart: false,
+    dailyGoalsEnabled: false,
   },
   themes: builtInThemes,
   timer: {
@@ -42,7 +44,7 @@ const createMeta = (): SyncMeta => ({
   syncCursor: '1',
   lastSyncAt: null,
   pendingOps: [],
-  localSchemaVersion: 3,
+  localSchemaVersion: 4,
   schemaBlocked: false,
   settingsVersion: null,
   lastConflicts: [],

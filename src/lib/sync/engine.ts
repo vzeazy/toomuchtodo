@@ -1,6 +1,6 @@
 import { ApiError } from './http';
 import { syncApi } from './client';
-import { AppStateData, Note, Project, SyncConflict, SyncDiagnostics, SyncMeta, SyncOperation, Task } from '../../types';
+import { AppStateData, DayGoal, Note, Project, SyncConflict, SyncDiagnostics, SyncMeta, SyncOperation, Task } from '../../types';
 
 const mergeByIdPreferLocal = <T extends { id: string }>(localRecords: T[], remoteRecords: T[]) => {
   const merged = new Map(remoteRecords.map((record) => [record.id, record]));
@@ -72,6 +72,26 @@ export const applyLocalPendingOps = (state: AppStateData, ops: SyncOperation[]):
       continue;
     }
 
+    if (op.entity === 'dayGoal') {
+      if (op.action === 'delete') {
+        nextState = {
+          ...nextState,
+          dayGoals: nextState.dayGoals.filter((goal) => goal.id !== op.recordId),
+        };
+        continue;
+      }
+
+      const dayGoal = op.payload as DayGoal;
+      const exists = nextState.dayGoals.some((item) => item.id === op.recordId);
+      nextState = {
+        ...nextState,
+        dayGoals: exists
+          ? nextState.dayGoals.map((item) => (item.id === op.recordId ? ({ ...item, ...dayGoal, id: item.id }) : item))
+          : [...nextState.dayGoals, dayGoal],
+      };
+      continue;
+    }
+
     if (op.entity === 'settings' && op.action === 'upsert') {
       nextState = {
         ...nextState,
@@ -85,12 +105,13 @@ export const applyLocalPendingOps = (state: AppStateData, ops: SyncOperation[]):
 
 export const mergeFirstLinkState = (
   localState: AppStateData,
-  remoteSnapshot: Pick<AppStateData, 'tasks' | 'projects' | 'notes' | 'settings'>,
+  remoteSnapshot: Pick<AppStateData, 'tasks' | 'projects' | 'notes' | 'dayGoals' | 'settings'>,
 ) => ({
   ...localState,
   tasks: mergeByIdPreferLocal(localState.tasks, remoteSnapshot.tasks),
   projects: mergeByIdPreferLocal(localState.projects, remoteSnapshot.projects),
   notes: mergeByIdPreferLocal(localState.notes, remoteSnapshot.notes),
+  dayGoals: mergeByIdPreferLocal(localState.dayGoals, remoteSnapshot.dayGoals),
   settings: { ...remoteSnapshot.settings, ...localState.settings },
 });
 
@@ -169,6 +190,26 @@ const applyChanges = (state: AppStateData, meta: SyncMeta, changes: SyncOperatio
         notes: exists
           ? nextState.notes.map((item) => (item.id === change.recordId ? ({ ...item, ...note, id: item.id }) : item))
           : [...nextState.notes, note],
+      };
+      continue;
+    }
+
+    if (change.entity === 'dayGoal') {
+      if (change.action === 'delete') {
+        nextState = { ...nextState, dayGoals: nextState.dayGoals.filter((goal) => goal.id !== change.recordId) };
+        continue;
+      }
+
+      const dayGoal = {
+        ...(change.payload as DayGoal),
+        syncVersion: typeof change.version === 'number' ? change.version : ((change.payload as DayGoal).syncVersion ?? null),
+      };
+      const exists = nextState.dayGoals.some((item) => item.id === change.recordId);
+      nextState = {
+        ...nextState,
+        dayGoals: exists
+          ? nextState.dayGoals.map((item) => (item.id === change.recordId ? ({ ...item, ...dayGoal, id: item.id }) : item))
+          : [...nextState.dayGoals, dayGoal],
       };
       continue;
     }
@@ -252,6 +293,7 @@ const applyBootstrapVersions = (ops: SyncOperation[], snapshot: AppStateData, se
   const taskVersions = new Map(snapshot.tasks.map((task) => [task.id, task.syncVersion ?? null]));
   const projectVersions = new Map(snapshot.projects.map((project) => [project.id, project.syncVersion ?? null]));
   const noteVersions = new Map(snapshot.notes.map((note) => [note.id, note.syncVersion ?? null]));
+  const dayGoalVersions = new Map(snapshot.dayGoals.map((goal) => [goal.id, goal.syncVersion ?? null]));
 
   return ops.map((op) => {
     if (op.entity === 'task') {
@@ -262,6 +304,9 @@ const applyBootstrapVersions = (ops: SyncOperation[], snapshot: AppStateData, se
     }
     if (op.entity === 'note') {
       return { ...op, baseVersion: noteVersions.get(op.recordId) ?? op.baseVersion ?? null };
+    }
+    if (op.entity === 'dayGoal') {
+      return { ...op, baseVersion: dayGoalVersions.get(op.recordId) ?? op.baseVersion ?? null };
     }
     if (op.entity === 'settings') {
       return { ...op, baseVersion: settingsVersion };
@@ -330,6 +375,7 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
           tasks: bootstrap.data.snapshot.tasks,
           projects: bootstrap.data.snapshot.projects,
           notes: bootstrap.data.snapshot.notes,
+          dayGoals: bootstrap.data.snapshot.dayGoals,
           settings: { ...nextState.settings, ...bootstrap.data.snapshot.settings },
         };
       } else {

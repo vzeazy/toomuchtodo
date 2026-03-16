@@ -351,8 +351,8 @@ export const NotesDashboardView: React.FC<{
       {/* Header */}
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="section-kicker mb-2 text-[10px] font-bold uppercase text-[var(--accent)]">Notes</div>
-          <h1 className="text-[30px] font-semibold leading-[1.02] tracking-[-0.04em] text-[var(--text-primary)]">Notes</h1>
+          <div className="section-kicker mb-2 text-[10px] font-bold uppercase text-[var(--accent)]">Notes Library</div>
+          <h1 className="text-[30px] font-semibold leading-[1.02] tracking-[-0.04em] text-[var(--text-primary)]">Notes Archive</h1>
           <div className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--text-muted)]">
             {filteredNotes.length} note{filteredNotes.length === 1 ? '' : 's'}
           </div>
@@ -437,7 +437,7 @@ export const NotesDashboardView: React.FC<{
           <FileText size={22} className="mx-auto text-[var(--text-muted)]" />
           <div className="mt-4 text-[18px] font-medium text-[var(--text-primary)]">No notes yet</div>
           <div className="mt-2 text-[13px] text-[var(--text-secondary)]">
-            {query ? 'Try a different search.' : 'Create your first note above.'}
+            {query ? 'Try a different search.' : 'Create your first note here or from a task panel.'}
           </div>
         </div>
       ) : notesViewLayout === 'card' ? (
@@ -452,4 +452,3 @@ export const NotesDashboardView: React.FC<{
     </div>
   );
 };
-

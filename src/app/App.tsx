@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Flag,
   Folder,
   Inbox,
   Keyboard,
@@ -90,6 +91,7 @@ export default function App() {
     tasks,
     projects,
     notes,
+    dayGoals,
     themes,
     settings,
     activeTheme,
@@ -106,9 +108,16 @@ export default function App() {
     updateNote,
     deleteNote,
     toggleNotePinned,
+    addDayGoal,
+    updateDayGoal,
+    deleteDayGoal,
+    toggleDayGoalComplete,
+    archiveDayGoal,
+    reorderDayGoals,
     setActiveTheme,
     setPlannerWidthMode,
     setTaskListMode,
+    setContextualNotesOrder,
     setTaskParent,
     moveTaskBefore,
     moveTaskAfter,
@@ -123,6 +132,8 @@ export default function App() {
     toggleCompactEmptyDaysInPlanner,
     toggleStartPlannerOnToday,
     toggleGroupDayViewByPart,
+    toggleDailyGoalsEnabled,
+    toggleContextualNotesEnabled,
     setNotesListPreview,
     setNotesViewLayout,
     timer,
@@ -797,6 +808,14 @@ export default function App() {
                 <PanelsTopLeft size={13} />
                 <span className="hidden lg:inline">Blocks</span>
               </button>
+              <button
+                type="button"
+                onClick={toggleDailyGoalsEnabled}
+                className={`flex h-[30px] items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-all lg:px-2.5 ${settings.dailyGoalsEnabled ? 'bg-[var(--accent-soft)] text-[var(--accent)] shadow-[0_0_0_1px_var(--accent-soft)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+              >
+                <Flag size={13} />
+                <span className="hidden lg:inline">Goals</span>
+              </button>
             </div>
           )}
 
@@ -1112,6 +1131,10 @@ export default function App() {
                 onSignOut={signOut}
                 onToggleCloudLinked={setCloudLinked}
                 onRunSyncNow={runSyncNow}
+                dailyGoalsEnabled={settings.dailyGoalsEnabled}
+                onToggleDailyGoalsEnabled={toggleDailyGoalsEnabled}
+                contextualNotesEnabled={settings.contextualNotesEnabled}
+                onToggleContextualNotesEnabled={toggleContextualNotesEnabled}
               />
             )}
 
@@ -1143,6 +1166,7 @@ export default function App() {
                     tasks={tasks}
                     projects={projects}
                     notes={activeNotes}
+                    dayGoals={dayGoals}
                     settings={settings}
                     themeVariables={themeVariables}
                     selectedArea={selectedArea}
@@ -1158,6 +1182,17 @@ export default function App() {
                     moveTaskAfter={moveTaskAfter}
                     toggleTaskCollapsed={toggleTaskCollapsed}
                     deleteTask={deleteTask}
+                    addDayGoal={addDayGoal}
+                    updateDayGoal={updateDayGoal}
+                    deleteDayGoal={deleteDayGoal}
+                    toggleDayGoalComplete={toggleDayGoalComplete}
+                    archiveDayGoal={archiveDayGoal}
+                    reorderDayGoals={reorderDayGoals}
+                    addNote={addNote}
+                    updateNote={updateNote}
+                    deleteNote={deleteNote}
+                    toggleNotePinned={toggleNotePinned}
+                    setContextualNotesOrder={setContextualNotesOrder}
                     setTaskToEditInModal={setTaskToEditInModal}
                     onOpenNotes={openNotesDashboard}
                     onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
@@ -1171,6 +1206,7 @@ export default function App() {
                       tasks={tasks}
                       projects={projects}
                       notes={activeNotes}
+                      dayGoals={dayGoals}
                       settings={settings}
                       themeVariables={themeVariables}
                       selectedArea={selectedArea}
@@ -1186,6 +1222,17 @@ export default function App() {
                       moveTaskAfter={moveTaskAfter}
                       toggleTaskCollapsed={toggleTaskCollapsed}
                       deleteTask={deleteTask}
+                      addDayGoal={addDayGoal}
+                      updateDayGoal={updateDayGoal}
+                      deleteDayGoal={deleteDayGoal}
+                      toggleDayGoalComplete={toggleDayGoalComplete}
+                      archiveDayGoal={archiveDayGoal}
+                      reorderDayGoals={reorderDayGoals}
+                      addNote={addNote}
+                      updateNote={updateNote}
+                      deleteNote={deleteNote}
+                      toggleNotePinned={toggleNotePinned}
+                      setContextualNotesOrder={setContextualNotesOrder}
                       setTaskToEditInModal={setTaskToEditInModal}
                       onOpenNotes={openNotesDashboard}
                     />
@@ -1196,6 +1243,7 @@ export default function App() {
                         tasks={tasks}
                         projects={projects}
                         notes={activeNotes}
+                        dayGoals={dayGoals}
                         settings={settings}
                         themeVariables={themeVariables}
                         selectedArea={selectedArea}
@@ -1211,6 +1259,17 @@ export default function App() {
                         moveTaskAfter={moveTaskAfter}
                         toggleTaskCollapsed={toggleTaskCollapsed}
                         deleteTask={deleteTask}
+                        addDayGoal={addDayGoal}
+                        updateDayGoal={updateDayGoal}
+                        deleteDayGoal={deleteDayGoal}
+                        toggleDayGoalComplete={toggleDayGoalComplete}
+                        archiveDayGoal={archiveDayGoal}
+                        reorderDayGoals={reorderDayGoals}
+                        addNote={addNote}
+                        updateNote={updateNote}
+                        deleteNote={deleteNote}
+                        toggleNotePinned={toggleNotePinned}
+                        setContextualNotesOrder={setContextualNotesOrder}
                         setTaskToEditInModal={setTaskToEditInModal}
                         onOpenNotes={openNotesDashboard}
                         onClose={() => setAdditionalPanels((prev) => prev.filter((p) => p.id !== panel.id))}
