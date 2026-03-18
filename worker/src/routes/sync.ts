@@ -1,6 +1,6 @@
 import { Env, SyncOperation, UserSession } from '../types';
 import { id, isAllowedOrigin, isMutation, json, now, parseJson, rateLimit } from '../lib';
-import { getSchemaMeta } from '../db/schema';
+import { ensureSyncEntityStorage, getSchemaMeta } from '../db/schema';
 
 type PreparedStatement = ReturnType<Env['DB']['prepare']>;
 
@@ -735,6 +735,7 @@ export const syncRoutes = {
     const security = applySecurity(env, request, session);
     if (security) return security;
 
+    await ensureSyncEntityStorage(env);
     const schema = await getSchemaMeta(env);
     const snapshot = await readSnapshot(env, session.userId);
     const latestCursor = await readLatestCursorInfo(env, session.userId);
@@ -752,6 +753,7 @@ export const syncRoutes = {
     const security = applySecurity(env, request, session);
     if (security) return security;
 
+    await ensureSyncEntityStorage(env);
     const payload = await parseJson<PushPayload>(request);
     const deviceId = (payload?.deviceId || '').trim();
     if (!deviceId) return json({ error: 'invalid_device_id' }, { status: 400 });
@@ -822,6 +824,7 @@ export const syncRoutes = {
     const security = applySecurity(env, request, session);
     if (security) return security;
 
+    await ensureSyncEntityStorage(env);
     const schema = await getSchemaMeta(env);
     const url = new URL(request.url);
     const cursorInfo = await resolveCursorInfo(env, session.userId, url.searchParams.get('cursor'));

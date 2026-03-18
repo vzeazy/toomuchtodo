@@ -46,6 +46,20 @@ const baseNote = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const baseDayGoal = (overrides: Record<string, unknown> = {}) => ({
+  id: 'goal-shared-id',
+  date: '2026-03-18',
+  title: 'First synced goal',
+  linkedTaskId: null,
+  position: 0,
+  completedAt: null,
+  archivedAt: null,
+  createdAt: 1_700_000_000_000,
+  updatedAt: 1_700_000_000_100,
+  deletedAt: null,
+  ...overrides,
+});
+
 test('turnstile-enabled sign-up creates a session in the same request', async () => {
   const harness = createPagesApiHarness({ TURNSTILE_ENABLED: 'true' });
   const originalFetch = globalThis.fetch;
@@ -478,6 +492,91 @@ test('sync stays functional when change_log.sequence has not been migrated yet',
     assert.equal(pull.data.changes.length, 1);
     assert.equal(pull.data.changes[0]?.recordId, 'legacy-task-1');
     assert.match(pull.data.cursor, /^\d+:[\w-]+$/);
+  } finally {
+    db.close();
+  }
+});
+
+test('sync auto-creates optional day_goals storage for legacy databases', async () => {
+  const db = new TestD1Database();
+  applyMigrations(db, '0005_notes_table.sql');
+  const env: Env = {
+    DB: db as unknown as D1Database,
+    SESSION_SECRET: 'test-session-secret',
+    TURNSTILE_SECRET: 'test-turnstile-secret',
+    TURNSTILE_ENABLED: 'false',
+    APP_SCHEMA_LATEST: '3',
+    APP_SCHEMA_MIN_SUPPORTED: '3',
+    SESSION_COOKIE_NAME: 'tmtd_session',
+    SESSION_COOKIE_SAME_SITE: 'Lax',
+    ALLOWED_ORIGINS: 'https://do.webme.ca',
+  };
+
+  const requestJson = async <T>(path: string, init?: RequestInit) => {
+    const response = await worker.fetch(new Request(`https://do.webme.ca${path}`, init), env);
+    return {
+      response,
+      data: await response.json() as T,
+    };
+  };
+
+  try {
+    const signUp = await requestJson<{ user: { email: string } }>('/api/auth/sign-up', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '203.0.113.12' },
+      body: JSON.stringify({ email: 'legacy-goals@example.com', password: strongPassword }),
+    });
+    assert.equal(signUp.response.status, 200);
+
+    const cookie = signUp.response.headers.get('set-cookie');
+    assert.ok(cookie);
+    const authHeaders = {
+      cookie: cookie.split(';', 1)[0] || '',
+      'cf-connecting-ip': '203.0.113.12',
+    };
+
+    const bootstrap = await requestJson<{ cursor: string }>('/api/sync/bootstrap', {
+      headers: authHeaders,
+    });
+    assert.equal(bootstrap.response.status, 200);
+
+    const push = await requestJson<{ accepted: number }>('/api/sync/push', {
+      method: 'POST',
+      headers: {
+        ...authHeaders,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        deviceId: 'legacy-goals-device',
+        cursor: bootstrap.data.cursor,
+        ops: [
+          {
+            id: 'legacy-goal-op-1',
+            entity: 'dayGoal',
+            action: 'upsert',
+            recordId: 'legacy-goal-1',
+            payload: baseDayGoal({ id: 'legacy-goal-1', title: 'Recovered goal table' }),
+            deviceId: 'legacy-goals-device',
+            timestamp: 1_700_000_000_900,
+            baseVersion: null,
+          },
+        ],
+      }),
+    });
+    assert.equal(push.response.status, 200);
+    assert.equal(push.data.accepted, 1);
+
+    const snapshot = await requestJson<{ snapshot: { dayGoals: Array<{ id: string; title: string }> } }>('/api/sync/bootstrap', {
+      headers: authHeaders,
+    });
+    assert.equal(snapshot.response.status, 200);
+    assert.equal(snapshot.data.snapshot.dayGoals.length, 1);
+    assert.equal(snapshot.data.snapshot.dayGoals[0]?.title, 'Recovered goal table');
+
+    const dayGoalsTable = await db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'day_goals'")
+      .first<{ name: string }>();
+    assert.equal(dayGoalsTable?.name, 'day_goals');
   } finally {
     db.close();
   }
