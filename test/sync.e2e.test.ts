@@ -519,6 +519,53 @@ test('replaying the same push op id is idempotent and does not duplicate change 
   }
 });
 
+test('sync push handles large op batches and replay checks without failing', async () => {
+  const harness = createPagesApiHarness();
+
+  try {
+    const client = harness.createClient();
+    await client.requestJson('/api/auth/sign-up', { body: { email: 'bulk-sync@example.com', password: strongPassword } });
+
+    const bootstrap = await client.requestJson<{ cursor: string }>('/api/sync/bootstrap');
+    const opCount = 220;
+    const ops = Array.from({ length: opCount }, (_, index) => {
+      const taskId = `bulk-task-${index}`;
+      return {
+        id: `bulk-op-${index}`,
+        entity: 'task' as const,
+        action: 'upsert' as const,
+        recordId: taskId,
+        payload: baseTask({
+          id: taskId,
+          title: `Bulk synced task ${index}`,
+          updatedAt: 1_700_000_004_000 + index,
+        }),
+        deviceId: 'device-bulk',
+        timestamp: 1_700_000_004_000 + index,
+        baseVersion: null,
+      };
+    });
+
+    const pushPayload = {
+      deviceId: 'device-bulk',
+      cursor: bootstrap.data.cursor,
+      ops,
+    };
+
+    const firstPush = await client.requestJson<{ accepted: number; acceptedOpIds: string[] }>('/api/sync/push', { body: pushPayload });
+    const secondPush = await client.requestJson<{ accepted: number; acceptedOpIds: string[] }>('/api/sync/push', { body: pushPayload });
+
+    assert.equal(firstPush.response.status, 200);
+    assert.equal(secondPush.response.status, 200);
+    assert.equal(firstPush.data.accepted, opCount);
+    assert.equal(secondPush.data.accepted, opCount);
+    assert.equal(firstPush.data.acceptedOpIds.length, opCount);
+    assert.equal(secondPush.data.acceptedOpIds.length, opCount);
+  } finally {
+    harness.close();
+  }
+});
+
 test('first-link merge keeps local tasks while hydrating remote tasks and projects', () => {
   const localState = {
     version: 4,

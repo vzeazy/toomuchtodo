@@ -39,6 +39,10 @@ interface ChangeLogCursorInfo {
 }
 
 const CHANGE_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_SQL_BIND_PARAMETERS = 100;
+const MAX_IN_CLAUSE_IDS = MAX_SQL_BIND_PARAMETERS - 1; // reserve one bind for user_id
+const SYNC_ENTITIES = ['task', 'project', 'note', 'dayGoal', 'settings'] as const;
+type SyncEntity = (typeof SYNC_ENTITIES)[number];
 
 const getCursor = (sequence: number) => `${sequence}`;
 const getLegacyCursor = (updatedAt: number, opId: string) => `${updatedAt}:${opId}`;
@@ -49,6 +53,13 @@ const parseLegacyCursor = (cursor: string) => {
 };
 
 const buildInClause = (count: number) => Array.from({ length: count }, () => '?').join(', ');
+const chunkValues = <T>(values: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+};
 
 const batchRows = (result: unknown) => {
   const rows = (result as { results?: unknown[] } | null)?.results;
@@ -342,49 +353,59 @@ const resolveCursorInfo = async (env: Env, userId: string, rawCursor: string | n
 
 const readCurrentRecords = async (env: Env, userId: string, ops: CompactedPushOp[]) => {
   const statements: PreparedStatement[] = [];
-  const groups = new Map<SyncOperation['entity'], string[]>();
+  const statementEntities: SyncEntity[] = [];
+  const groups = new Map<SyncEntity, Set<string>>();
 
   for (const op of ops) {
-    const ids = groups.get(op.entity) || [];
-    ids.push(op.recordId);
-    groups.set(op.entity, ids);
+    const entity: SyncEntity = op.entity;
+    const ids = groups.get(entity) || new Set<string>();
+    ids.add(op.recordId);
+    groups.set(entity, ids);
   }
 
-  for (const entity of ['task', 'project', 'note', 'dayGoal', 'settings'] as const) {
-    const ids = groups.get(entity);
-    if (!ids?.length) continue;
+  for (const entity of SYNC_ENTITIES) {
+    const idSet = groups.get(entity);
+    if (!idSet?.size) continue;
+    const ids = Array.from(idSet);
+    const idChunks = chunkValues(ids, MAX_IN_CLAUSE_IDS);
 
-    const inClause = buildInClause(ids.length);
-    if (entity === 'task') {
-      statements.push(env.DB.prepare(`SELECT * FROM tasks WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
-      continue;
+    for (const idChunk of idChunks) {
+      const inClause = buildInClause(idChunk.length);
+      if (entity === 'task') {
+        statements.push(env.DB.prepare(`SELECT * FROM tasks WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...idChunk));
+        statementEntities.push(entity);
+        continue;
+      }
+      if (entity === 'project') {
+        statements.push(env.DB.prepare(`SELECT * FROM projects WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...idChunk));
+        statementEntities.push(entity);
+        continue;
+      }
+      if (entity === 'note') {
+        statements.push(env.DB.prepare(`SELECT * FROM notes WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...idChunk));
+        statementEntities.push(entity);
+        continue;
+      }
+      if (entity === 'dayGoal') {
+        statements.push(env.DB.prepare(`SELECT * FROM day_goals WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...idChunk));
+        statementEntities.push(entity);
+        continue;
+      }
+      statements.push(
+        env.DB.prepare(`SELECT id, payload, version FROM settings WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...idChunk),
+      );
+      statementEntities.push(entity);
     }
-    if (entity === 'project') {
-      statements.push(env.DB.prepare(`SELECT * FROM projects WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
-      continue;
-    }
-    if (entity === 'note') {
-      statements.push(env.DB.prepare(`SELECT * FROM notes WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
-      continue;
-    }
-    if (entity === 'dayGoal') {
-      statements.push(env.DB.prepare(`SELECT * FROM day_goals WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
-      continue;
-    }
-    statements.push(env.DB.prepare(`SELECT id, payload, version FROM settings WHERE user_id = ? AND id IN (${inClause})`).bind(userId, ...ids));
   }
 
   if (!statements.length) return new Map<string, StoredRecord>();
 
   const results = await env.DB.batch(statements);
   const currentRecords = new Map<string, StoredRecord>();
-  let resultIndex = 0;
-
-  for (const entity of ['task', 'project', 'note', 'dayGoal', 'settings'] as const) {
-    const ids = groups.get(entity);
-    if (!ids?.length) continue;
-    const rows = batchRows(results[resultIndex]);
-    resultIndex += 1;
+  for (const [resultIndex, result] of results.entries()) {
+    const entity = statementEntities[resultIndex];
+    if (!entity) continue;
+    const rows = batchRows(result);
 
     for (const row of rows as any[]) {
       if (entity === 'task') {
@@ -743,12 +764,15 @@ export const syncRoutes = {
     const duplicateIds = ops.map((op) => op.id);
     const duplicateIdSet = new Set<string>();
     if (duplicateIds.length) {
-      const duplicateQuery = await env.DB.prepare(
-        `SELECT id FROM change_log WHERE user_id = ? AND id IN (${buildInClause(duplicateIds.length)})`,
-      )
-        .bind(session.userId, ...duplicateIds)
-        .all<{ id: string }>();
-      for (const row of duplicateQuery.results || []) duplicateIdSet.add(String(row.id));
+      const duplicateChunks = chunkValues(Array.from(new Set(duplicateIds)), MAX_IN_CLAUSE_IDS);
+      for (const duplicateChunk of duplicateChunks) {
+        const duplicateQuery = await env.DB.prepare(
+          `SELECT id FROM change_log WHERE user_id = ? AND id IN (${buildInClause(duplicateChunk.length)})`,
+        )
+          .bind(session.userId, ...duplicateChunk)
+          .all<{ id: string }>();
+        for (const row of duplicateQuery.results || []) duplicateIdSet.add(String(row.id));
+      }
     }
 
     const pendingOps = compactIncomingOps(ops.filter((op) => !duplicateIdSet.has(op.id)), deviceId);
