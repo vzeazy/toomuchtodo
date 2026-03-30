@@ -99,7 +99,7 @@ export const TaskListView: React.FC<{
       });
     }, [tasks]);
     const topLevelListTasks = useMemo(() => listTasks.filter((task) => !task.parentId), [listTasks]);
-    const visibleListTasks = useMemo(() => topLevelListTasks, [topLevelListTasks]);
+    const visibleListTasks = useMemo(() => currentView === 'day' ? listTasks : topLevelListTasks, [currentView, listTasks, topLevelListTasks]);
 
     const childCounts = useMemo(() => {
       const counts = new Map<string, number>();
@@ -488,7 +488,7 @@ export const TaskListView: React.FC<{
             <div className="min-w-0">
               <h1 className="text-[22px] font-medium leading-[1.05] tracking-[-0.03em] text-[var(--text-primary)] sm:text-[26px]">{headerTitle}</h1>
               <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium text-[var(--text-muted)]">
-                {currentView !== 'day' && currentView !== 'today' && <span>{(taskListMode === 'list' ? visibleListTasks.length : itemCount)} items</span>}
+                {(taskListMode === 'list' ? visibleListTasks.length : itemCount)} items
                 {selectedArea && <span>Area: {selectedArea}</span>}
                 {selectedProjectId && <span>Project scoped</span>}
               </div>
@@ -930,7 +930,6 @@ export const TaskListView: React.FC<{
               onAdd={handleAddTask}
               className="mt-3 px-5 py-3 opacity-85 hover:opacity-100"
               iconSize={16}
-              textSizeClass={currentView === 'day' ? 'text-[12.5px]' : 'text-[13px]'}
             />
           )}
         </div>

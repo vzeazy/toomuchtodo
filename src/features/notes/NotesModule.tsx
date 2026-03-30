@@ -47,7 +47,7 @@ export const NotesModule: React.FC<{
   React.useEffect(() => {
     if (!editingNote) return;
     setDraftBody(editingNote.body);
-  }, [editingNote?.id, editingNote?.body]);
+  }, [editingNote?.id]);
 
   React.useEffect(() => {
     if (!editingNoteId) return;

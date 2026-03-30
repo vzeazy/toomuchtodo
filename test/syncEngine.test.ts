@@ -151,8 +151,94 @@ test('runSyncOnce clears accepted ops even when the follow-up pull fails', async
   try {
     const result = await runSyncOnce(createState(), meta);
     assert.equal(result.meta.pendingOps.length, 0);
-    assert.equal(result.meta.syncCursor, '5');
+    assert.equal(result.meta.syncCursor, '1');
     assert.match(result.error?.message || '', /network dropped/);
+  } finally {
+    syncApi.push = originalPush;
+    syncApi.pull = originalPull;
+  }
+});
+
+test('runSyncOnce pulls from the pre-push cursor so accepted writes come back in the same sync run', async () => {
+  const originalPush = syncApi.push;
+  const originalPull = syncApi.pull;
+
+  const startedState = createState();
+  const completedTask = {
+    ...startedState.tasks[0],
+    status: 'completed' as const,
+    updatedAt: 10,
+    syncVersion: 8,
+  };
+  const meta: SyncMeta = {
+    mode: 'account',
+    cloudLinked: true,
+    deviceId: 'device-a',
+    syncCursor: '1',
+    lastSyncAt: null,
+    pendingOps: [{
+      id: 'op-complete-task-1',
+      entity: 'task',
+      action: 'upsert',
+      recordId: 'task-1',
+      payload: {
+        ...startedState.tasks[0],
+        status: 'completed',
+        updatedAt: 10,
+      } as unknown as Record<string, unknown>,
+      deviceId: 'device-a',
+      timestamp: 10,
+      baseVersion: 7,
+    }],
+    localSchemaVersion: 4,
+    schemaBlocked: false,
+    settingsVersion: null,
+    lastConflicts: [],
+    lastSyncDiagnostics: null,
+  };
+
+  syncApi.push = async () => ({
+    data: {
+      accepted: 1,
+      acceptedOpIds: ['op-complete-task-1'],
+      conflicts: [],
+      cursor: '5',
+    },
+    requestId: 'req-push',
+    retryCount: 0,
+    status: 200,
+  });
+  syncApi.pull = async (pullMeta) => {
+    assert.equal(pullMeta.syncCursor, '1');
+    return {
+      data: {
+        cursor: '5',
+        changes: [{
+          id: 'server-op-complete-task-1',
+          entity: 'task',
+          action: 'upsert',
+          recordId: 'task-1',
+          payload: completedTask as unknown as Record<string, unknown>,
+          deviceId: 'device-a',
+          timestamp: 10,
+          version: 8,
+        }],
+        stats: { conflicts: 0 },
+        schema: { minSupportedClientSchema: 4, latestSchema: 4 },
+      },
+      requestId: 'req-pull',
+      retryCount: 0,
+      status: 200,
+    };
+  };
+
+  try {
+    const result = await runSyncOnce(startedState, meta);
+    assert.equal(result.error, null);
+    assert.equal(result.state.tasks[0]?.status, 'completed');
+    assert.equal(result.state.tasks[0]?.syncVersion, 8);
+    assert.equal(result.meta.syncCursor, '5');
+    assert.equal(result.meta.pendingOps.length, 0);
   } finally {
     syncApi.push = originalPush;
     syncApi.pull = originalPull;

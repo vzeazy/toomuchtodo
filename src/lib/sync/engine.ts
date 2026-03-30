@@ -410,7 +410,6 @@ export const runSyncOnce = async (state: AppStateData, meta: SyncMeta): Promise<
       nextMeta = buildDiagnostics(
         {
           ...nextMeta,
-          syncCursor: pushResult.data.cursor,
           lastConflicts: pushResult.data.conflicts,
           pendingOps: nextMeta.pendingOps.filter((op) => !acceptedSet.has(op.id) && !conflictIds.has(op.id)),
         },

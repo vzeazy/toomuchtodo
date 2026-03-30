@@ -43,7 +43,11 @@ export const TaskModal: React.FC<{
   const [isMetaExpanded, setIsMetaExpanded] = useState(false);
   const [dragTarget, setDragTarget] = useState<string | null>(null);
   const [isDraggingSubtask, setIsDraggingSubtask] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(task.title);
+  const [draftDescription, setDraftDescription] = useState(task.description);
   const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const descriptionSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tagValue = useMemo(() => task.tags.join(', '), [task.tags]);
   const subtasks = useMemo(() => tasks.filter((t) => t.parentId === task.id), [tasks, task.id]);
@@ -65,7 +69,24 @@ export const TaskModal: React.FC<{
     setIsMetaExpanded(false);
     setDragTarget(null);
     setIsDraggingSubtask(false);
+    setDraftTitle(task.title);
+    setDraftDescription(task.description);
   }, [task.id]);
+
+  useEffect(() => {
+    if (!isEditingNotes) {
+      setDraftDescription(task.description);
+    }
+  }, [isEditingNotes, task.description]);
+
+  useEffect(() => {
+    setDraftTitle(task.title);
+  }, [task.title]);
+
+  useEffect(() => () => {
+    if (titleSaveTimeoutRef.current) clearTimeout(titleSaveTimeoutRef.current);
+    if (descriptionSaveTimeoutRef.current) clearTimeout(descriptionSaveTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     if (!isDraggingSubtask) return;
@@ -94,6 +115,42 @@ export const TaskModal: React.FC<{
       textarea.setSelectionRange(caret, caret);
     }
   }, [isEditingNotes, task.id]);
+
+  const scheduleTitleSave = (nextTitle: string) => {
+    if (titleSaveTimeoutRef.current) clearTimeout(titleSaveTimeoutRef.current);
+    titleSaveTimeoutRef.current = setTimeout(() => {
+      onUpdate(task.id, { title: nextTitle });
+      titleSaveTimeoutRef.current = null;
+    }, 400);
+  };
+
+  const flushTitleSave = () => {
+    if (titleSaveTimeoutRef.current) {
+      clearTimeout(titleSaveTimeoutRef.current);
+      titleSaveTimeoutRef.current = null;
+    }
+    if (draftTitle !== task.title) {
+      onUpdate(task.id, { title: draftTitle });
+    }
+  };
+
+  const scheduleDescriptionSave = (nextDescription: string) => {
+    if (descriptionSaveTimeoutRef.current) clearTimeout(descriptionSaveTimeoutRef.current);
+    descriptionSaveTimeoutRef.current = setTimeout(() => {
+      onUpdate(task.id, { description: nextDescription });
+      descriptionSaveTimeoutRef.current = null;
+    }, 500);
+  };
+
+  const flushDescriptionSave = () => {
+    if (descriptionSaveTimeoutRef.current) {
+      clearTimeout(descriptionSaveTimeoutRef.current);
+      descriptionSaveTimeoutRef.current = null;
+    }
+    if (draftDescription !== task.description) {
+      onUpdate(task.id, { description: draftDescription });
+    }
+  };
 
   const commitSubtask = (keepOpen = false) => {
     const nextTitle = draftSubtaskTitle.trim();
@@ -141,12 +198,15 @@ export const TaskModal: React.FC<{
         <div className="flex-1 overflow-y-auto px-8 pb-4">
           <div className="mb-6">
             <textarea
-              value={task.title}
+              value={draftTitle}
               onChange={(event) => {
-                onUpdate(task.id, { title: event.target.value.replace(/\n/g, '') });
+                const nextTitle = event.target.value.replace(/\n/g, '');
+                setDraftTitle(nextTitle);
+                scheduleTitleSave(nextTitle);
                 event.target.style.height = 'auto';
                 event.target.style.height = `${event.target.scrollHeight}px`;
               }}
+              onBlur={flushTitleSave}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -207,13 +267,16 @@ export const TaskModal: React.FC<{
             ) : isEditingNotes ? (
               <textarea
                 ref={notesTextareaRef}
-                value={task.description}
+                value={draftDescription}
                 onBlur={() => {
+                  flushDescriptionSave();
                   // Small delay to allow 'Done' button clicks to register first before blurring
                   setTimeout(() => setIsEditingNotes(false), 100);
                 }}
                 onChange={(event) => {
-                  onUpdate(task.id, { description: event.target.value });
+                  const nextDescription = event.target.value;
+                  setDraftDescription(nextDescription);
+                  scheduleDescriptionSave(nextDescription);
                   event.target.style.height = 'auto';
                   event.target.style.height = `${event.target.scrollHeight}px`;
                 }}

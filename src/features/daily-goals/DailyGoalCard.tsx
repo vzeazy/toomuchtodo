@@ -28,7 +28,13 @@ export const DailyGoalCard: React.FC<{
 }) => {
   const isComplete = goal.completedAt !== null;
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [draftTitle, setDraftTitle] = React.useState(goal.title);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const saveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    setDraftTitle(goal.title);
+  }, [goal.id]);
 
   React.useEffect(() => {
     if (!menuOpen) return;
@@ -42,6 +48,32 @@ export const DailyGoalCard: React.FC<{
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [menuOpen]);
+
+  React.useEffect(() => () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+  }, []);
+
+  const flushDraft = React.useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (draftTitle !== goal.title) {
+      onUpdate(goal.id, { title: draftTitle });
+    }
+  }, [draftTitle, goal.id, goal.title, onUpdate]);
+
+  const scheduleSave = React.useCallback((nextTitle: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      onUpdate(goal.id, { title: nextTitle });
+      saveTimeoutRef.current = null;
+    }, 500);
+  }, [goal.id, onUpdate]);
 
   return (
     <motion.article
@@ -73,8 +105,13 @@ export const DailyGoalCard: React.FC<{
 
       <input
         title={goal.title}
-        value={goal.title}
-        onChange={(event) => onUpdate(goal.id, { title: event.target.value })}
+        value={draftTitle}
+        onChange={(event) => {
+          const nextTitle = event.target.value;
+          setDraftTitle(nextTitle);
+          scheduleSave(nextTitle);
+        }}
+        onBlur={flushDraft}
         placeholder="Untitled goal"
         className={`min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap bg-transparent text-[14px] tracking-[-0.015em] leading-5 outline-none placeholder:text-[var(--text-muted)] ${
           isComplete ? 'text-[var(--text-muted)] line-through' : isPrimary ? 'font-semibold text-[var(--text-primary)]' : 'font-medium text-[var(--text-primary)]'
