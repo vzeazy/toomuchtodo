@@ -19,7 +19,11 @@ export interface PanelState {
   dateStr: string | null;
 }
 
-export const TaskPanelWrapper: React.FC<{
+export interface TaskPanelWrapperHandle {
+  togglePictureInPicture: () => Promise<void>;
+}
+
+type TaskPanelWrapperProps = {
   panel: PanelState;
   tasks: Task[];
   projects: Project[];
@@ -57,7 +61,11 @@ export const TaskPanelWrapper: React.FC<{
   onBack?: () => void;
   onClose?: () => void;
   isSingle?: boolean;
-}> = ({
+  hideInlinePictureInPictureAction?: boolean;
+  onPictureInPictureOpenChange?: (open: boolean) => void;
+};
+
+export const TaskPanelWrapper = React.forwardRef<TaskPanelWrapperHandle, TaskPanelWrapperProps>(({ 
   panel,
   tasks,
   projects,
@@ -95,6 +103,8 @@ export const TaskPanelWrapper: React.FC<{
   onBack,
   onClose,
   isSingle,
+  hideInlinePictureInPictureAction = false,
+  onPictureInPictureOpenChange,
 }) => {
     const [isPictureInPictureOpen, setIsPictureInPictureOpen] = React.useState(false);
     const pictureInPictureBridgeRef = React.useRef<TaskPanelPictureInPictureBridgeHandle>(null);
@@ -239,6 +249,14 @@ export const TaskPanelWrapper: React.FC<{
       await pictureInPictureBridgeRef.current?.open();
     };
 
+    React.useImperativeHandle(ref, () => ({
+      togglePictureInPicture: handleTogglePictureInPicture,
+    }), [handleTogglePictureInPicture]);
+
+    React.useEffect(() => {
+      onPictureInPictureOpenChange?.(isPictureInPictureOpen);
+    }, [isPictureInPictureOpen, onPictureInPictureOpenChange]);
+
     const pictureInPicturePlaceholder = (
       <div className="flex min-h-[360px] items-center justify-center px-6">
         <div className="panel-surface max-w-sm rounded-[28px] px-6 py-7 text-center">
@@ -274,9 +292,10 @@ export const TaskPanelWrapper: React.FC<{
       </button>
     );
 
-    const panelActions = (
+    const showInlinePictureInPictureAction = !hideInlinePictureInPictureAction;
+    const panelActions = showInlinePictureInPictureAction || onClose ? (
       <div className="mb-4 flex items-center justify-end gap-2 md:absolute md:top-0 md:right-0 md:z-20 md:mb-0">
-        {popOutAction}
+        {showInlinePictureInPictureAction && popOutAction}
         {onClose && (
           <button
             onClick={onClose}
@@ -289,7 +308,7 @@ export const TaskPanelWrapper: React.FC<{
           </button>
         )}
       </div>
-    );
+    ) : null;
 
     const body = isPictureInPictureOpen ? pictureInPicturePlaceholder : child;
 
@@ -328,4 +347,6 @@ export const TaskPanelWrapper: React.FC<{
         </div>
       </>
     );
-  };
+  });
+
+TaskPanelWrapper.displayName = 'TaskPanelWrapper';

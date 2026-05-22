@@ -31,6 +31,7 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
+  PictureInPicture2,
   Plus,
   Search,
   Settings,
@@ -62,7 +63,7 @@ import { SettingsView } from '../features/settings/SettingsView';
 import { AccountSyncModal } from '../features/settings/AccountSyncModal';
 import { TaskListView } from '../features/tasks/TaskListView';
 import { TaskModal } from '../features/tasks/TaskModal';
-import { TaskPanelWrapper, PanelState } from '../features/tasks/TaskPanelWrapper';
+import { TaskPanelWrapper, TaskPanelWrapperHandle, PanelState } from '../features/tasks/TaskPanelWrapper';
 import { collectTaskIdsWithAncestors } from '../features/tasks/taskTree';
 import { GlobalTimerOverlay } from '../components/timer/GlobalTimerOverlay';
 import { GlobalTimerTrigger } from '../components/timer/GlobalTimerTrigger';
@@ -172,6 +173,7 @@ export default function App() {
   const [projectMenuId, setProjectMenuId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileToolbarMenu, setShowMobileToolbarMenu] = useState(false);
+  const [isMainTaskPanelPictureInPictureOpen, setIsMainTaskPanelPictureInPictureOpen] = useState(false);
   const [notesViewFocus, setNotesViewFocus] = useState<{ scopeType: NoteScopeType | 'all'; scopeRef: string | null; noteId: string | null }>({
     scopeType: 'all',
     scopeRef: null,
@@ -179,6 +181,7 @@ export default function App() {
   });
 
   const [additionalPanels, setAdditionalPanels] = useState<PanelState[]>([]);
+  const mainTaskPanelRef = useRef<TaskPanelWrapperHandle | null>(null);
   const themeVariables = useMemo(() => getThemeVariables(activeTheme), [activeTheme]);
 
   useEffect(() => {
@@ -241,11 +244,17 @@ export default function App() {
   const todayDateKey = formatDateKey(new Date());
   const weekDays = useMemo(() => getWeekDays(currentWeekOffset, settings.startPlannerOnToday), [currentWeekOffset, settings.startPlannerOnToday]);
   const weekRangeLabel = useMemo(() => getWeekRangeLabel(weekDays), [weekDays]);
+  const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
+  const isSingleTaskPanelView = currentView !== 'planner' && currentView !== 'settings' && currentView !== 'search' && currentView !== 'notes' && additionalPanels.length === 0;
   const selectedDayLabel = useMemo(() => {
     if (currentView !== 'day' || !selectedPlannerDate) return null;
     const date = new Date(`${selectedPlannerDate}T00:00:00`);
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   }, [currentView, selectedPlannerDate]);
+
+  const handleToggleMainTaskPanelPictureInPicture = useCallback(() => {
+    void mainTaskPanelRef.current?.togglePictureInPicture();
+  }, []);
 
   const shiftSelectedDay = useCallback((delta: number) => {
     const base = selectedPlannerDate ? new Date(`${selectedPlannerDate}T00:00:00`) : new Date();
@@ -663,6 +672,17 @@ export default function App() {
           <div className="min-w-0 items-baseline gap-3 lg:flex">
             <div className="text-[14px] font-bold uppercase tracking-[0.14em] text-[var(--text-primary)]">Too Much Todo</div>
           </div>
+          {isSingleTaskPanelView && isPictureInPictureSupported && (
+            <button
+              type="button"
+              onClick={handleToggleMainTaskPanelPictureInPicture}
+              className="panel-muted flex h-9 w-9 items-center justify-center rounded-xl border soft-divider text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] lg:hidden"
+              title={isMainTaskPanelPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window'}
+              aria-label={isMainTaskPanelPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window'}
+            >
+              <PictureInPicture2 size={16} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowMobileToolbarMenu((prev) => !prev)}
@@ -714,6 +734,18 @@ export default function App() {
         </div>
 
         <div className={`${showMobileToolbarMenu ? 'mt-3 flex' : 'hidden'} flex-wrap items-center gap-2 lg:mt-0 lg:flex lg:h-full lg:justify-end lg:py-1`}>
+          {isSingleTaskPanelView && isPictureInPictureSupported && (
+            <button
+              type="button"
+              onClick={handleToggleMainTaskPanelPictureInPicture}
+              className="panel-muted hidden h-9 items-center gap-2 rounded-xl border soft-divider px-3 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] lg:inline-flex"
+              title={isMainTaskPanelPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window'}
+              aria-label={isMainTaskPanelPictureInPictureOpen ? 'Return task panel from always-on-top window' : 'Open task panel in always-on-top window'}
+            >
+              <PictureInPicture2 size={15} />
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em]">{isMainTaskPanelPictureInPictureOpen ? 'Return' : 'Pop Out'}</span>
+            </button>
+          )}
           {/* Group 1: Dynamic Mode Options (Width varies by view) */}
           {currentView === 'planner' && (
             <div className="panel-muted flex items-center rounded-xl border soft-divider p-1">
@@ -1162,6 +1194,7 @@ export default function App() {
               <>
                 {additionalPanels.length === 0 ? (
                   <TaskPanelWrapper
+                    ref={mainTaskPanelRef}
                     panel={{ id: 'main', view: currentView, projectId: selectedProjectId, dateStr: selectedPlannerDate }}
                     tasks={tasks}
                     projects={projects}
@@ -1198,6 +1231,8 @@ export default function App() {
                     onOpenDate={(dateStr) => handleViewSelect(undefined, 'day', null, dateStr)}
                     onBack={currentView === 'day' ? () => handleViewSelect(undefined, 'planner') : undefined}
                     isSingle={true}
+                    hideInlinePictureInPictureAction={isPictureInPictureSupported}
+                    onPictureInPictureOpenChange={setIsMainTaskPanelPictureInPictureOpen}
                   />
                 ) : (
                   <div className="flex w-full h-full gap-4 overflow-x-auto pb-4" style={{ paddingRight: '20px' }}>
