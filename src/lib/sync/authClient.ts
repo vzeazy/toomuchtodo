@@ -8,6 +8,10 @@ export interface AuthSession {
   };
 }
 
+interface SessionResponse {
+  user: AuthSession['user'] | null;
+}
+
 export interface AuthRequestPayload {
   email: string;
   password: string;
@@ -17,8 +21,8 @@ export interface AuthRequestPayload {
 export const authClient = {
   async getSession() {
     try {
-      const response = await requestJson<AuthSession>('session', '/api/auth/session');
-      return response.data;
+      const response = await requestJson<SessionResponse>('session', '/api/auth/session');
+      return response.data.user ? { user: response.data.user } : null;
     } catch (error) {
       if (error instanceof Error && 'status' in error && (error as { status: number | null }).status === 401) {
         return null;

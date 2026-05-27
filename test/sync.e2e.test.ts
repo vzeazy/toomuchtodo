@@ -279,8 +279,9 @@ test('sign-in, session refresh, sign-out, bootstrap, push, pull, and first-link 
 
     const signOut = await deviceA.requestJson('/api/auth/sign-out', { method: 'POST' });
     assert.equal(signOut.response.status, 200);
-    const signedOutSession = await deviceA.requestJson('/api/auth/session');
-    assert.equal(signedOutSession.response.status, 401);
+    const signedOutSession = await deviceA.requestJson<{ user: null }>('/api/auth/session');
+    assert.equal(signedOutSession.response.status, 200);
+    assert.equal(signedOutSession.data.user, null);
 
     const signIn = await deviceB.requestJson('/api/auth/sign-in', {
       body: { email, password },

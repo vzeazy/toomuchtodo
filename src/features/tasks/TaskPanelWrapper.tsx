@@ -105,7 +105,7 @@ export const TaskPanelWrapper = React.forwardRef<TaskPanelWrapperHandle, TaskPan
   isSingle,
   hideInlinePictureInPictureAction = false,
   onPictureInPictureOpenChange,
-}) => {
+}, ref) => {
     const [isPictureInPictureOpen, setIsPictureInPictureOpen] = React.useState(false);
     const pictureInPictureBridgeRef = React.useRef<TaskPanelPictureInPictureBridgeHandle>(null);
     const isPictureInPictureSupported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);

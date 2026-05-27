@@ -183,7 +183,7 @@ export const authRoutes = {
 
   async session(env: Env, request: Request) {
     const session = await getSessionFromRequest(env, request);
-    if (!session) return json({ error: 'unauthorized' }, { status: 401 });
+    if (!session) return json({ user: null });
     return json({ user: { id: session.userId, email: session.email, createdAt: session.createdAt } });
   },
 
