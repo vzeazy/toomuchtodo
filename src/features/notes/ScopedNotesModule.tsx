@@ -55,12 +55,9 @@ export const ScopedNotesModule: React.FC<{
     setActiveNoteId(scopedNotes[0].id);
   }, [activeNoteId, scopedNotes]);
 
-  if (!scope || !isContextualNotesEnabledForSurfaceValue(enabled, 'task-panel')) {
-    return null;
-  }
-
-  const scopeKey = `${scope.scopeType}:${scope.scopeRef}`;
-  const scopedOrderIds = notesOrderByScope[scopeKey] ?? [];
+  const shouldRender = Boolean(scope && isContextualNotesEnabledForSurfaceValue(enabled, 'task-panel'));
+  const scopeKey = scope ? `${scope.scopeType}:${scope.scopeRef}` : '';
+  const scopedOrderIds = scopeKey ? (notesOrderByScope[scopeKey] ?? []) : [];
   const orderedScopedNotes = React.useMemo(() => {
     const sortedScopedNotes = sortNotes(scopedNotes);
     if (!scopedOrderIds.length) return sortedScopedNotes;
@@ -78,6 +75,10 @@ export const ScopedNotesModule: React.FC<{
     }
     return ordered;
   }, [scopedNotes, scopedOrderIds]);
+
+  if (!shouldRender || !scope) {
+    return null;
+  }
 
   const handleAddNote = (body: string) => {
     const note = onAddNote({
